@@ -17,6 +17,7 @@ import {
   Typography,
   theme,
 } from 'antd';
+import ru from 'antd/locale/ru_RU';
 
 import { HomePage } from './pages/HomePage';
 
@@ -164,6 +165,7 @@ const App: React.FC = () => {
           colorPrimary: '#4f46e5',
         },
       }}
+      locale={ru}
     >
       <AppShell isDarkMode={isDarkMode} onToggleTheme={setIsDarkMode} />
     </ConfigProvider>
