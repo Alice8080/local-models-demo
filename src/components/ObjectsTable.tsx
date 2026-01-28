@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, Table } from 'antd';
+import { Alert, Spin, Table } from 'antd';
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
+import { ObjectsInputForm } from './ObjectsInputForm';
+import { textToQueryParamsOnline } from '../utils/textToQueryOnline';
 
 type SpaceObject = {
   id: string;
@@ -16,11 +18,14 @@ type FieldsResponse = Record<string, string>;
 
 const DEFAULT_PAGE_SIZE = 10;
 const API_BASE_URL =
-  (import.meta.env.REACT_APP_API_URL as string | undefined) ??
+  (import.meta.env.VITE_API_URL as string | undefined) ??
   'http://localhost:3000';
 
+interface Props {
+  mode: 'local' | 'online';
+}
 
-export function ObjectsTable() {
+export function ObjectsTable({ mode }: Props) {
   const [fields, setFields] = useState<FieldsResponse>({});
   const [data, setData] = useState<SpaceObject[]>([]);
   const [page, setPage] = useState(1);
@@ -29,6 +34,43 @@ export function ObjectsTable() {
   const [isLoadingFields, setIsLoadingFields] = useState(false);
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [query, setQuery] = useState('');
+  const [params, setParams] = useState('');
+  const [isQueryLoading, setIsQueryLoading] = useState(false);
+
+  useEffect(() => {
+    let isActive = true;
+
+    const resolveParams = async () => {
+      if (!query) {
+        setParams('');
+        setIsQueryLoading(false);
+        return;
+      }
+
+      setIsQueryLoading(true);
+      try {
+        const nextParams = await textToQueryParamsOnline(query);
+        if (isActive) {
+          setParams(nextParams);
+        }
+      } finally {
+        if (isActive) {
+          setIsQueryLoading(false);
+        }
+      }
+    };
+
+    resolveParams();
+
+    return () => {
+      isActive = false;
+    };
+  }, [query]);
+
+  useEffect(() => {
+    console.log(params);
+  }, [params]);
 
   useEffect(() => {
     let isActive = true;
@@ -75,6 +117,12 @@ export function ObjectsTable() {
         const url = new URL(`${API_BASE_URL}/space-objects`);
         url.searchParams.set('_page', String(page));
         url.searchParams.set('_per_page', String(pageSize));
+        if (params) {
+          const extraParams = new URLSearchParams(params);
+          extraParams.forEach((value, key) => {
+            url.searchParams.set(key, value);
+          });
+        }
 
         const response = await fetch(url);
         if (!response.ok) {
@@ -84,8 +132,8 @@ export function ObjectsTable() {
         if (isActive) {
           const normalized = result.data.map((item) => ({
             ...item,
-            orbitalPeriod_hours:
-              item.orbitalPeriod_hours ??
+            orbitalPeriod:
+              item.orbitalPeriod ??
               (item as { period?: number }).period ??
               null,
           }));
@@ -108,13 +156,13 @@ export function ObjectsTable() {
     return () => {
       isActive = false;
     };
-  }, [page, pageSize]);
+  }, [page, pageSize, params]);
 
   const columns = useMemo<ColumnsType<SpaceObject>>(() => {
     return Object.entries(fields)
       .filter(([key]) => key !== 'id')
       .map(([key, title]) => ({
-        title,
+        title: <span style={{ whiteSpace: 'normal' }}>{title}</span>,
         dataIndex: key,
         key,
         ellipsis: true,
@@ -131,6 +179,8 @@ export function ObjectsTable() {
 
   return (
     <>
+      <ObjectsInputForm mode={mode} setQuery={setQuery} />
+      {isQueryLoading && <Spin />}
       {error && <Alert type="error" message={error} showIcon />}
       <Table
         rowKey="id"

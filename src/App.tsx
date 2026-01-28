@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, Route, Routes } from 'react-router-dom';
 import {
-  HomeOutlined,
+  TableOutlined,
+  StarOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   MoonFilled,
@@ -19,7 +20,8 @@ import {
 } from 'antd';
 import ru from 'antd/locale/ru_RU';
 
-import { HomePage } from './pages/HomePage';
+import { OnlineDemoPage } from './pages/OnlineDemoPage';
+import { LocalDemoPage } from './pages/LocalDemoPage';
 
 const { Header, Sider, Content } = Layout;
 const THEME_STORAGE_KEY = 'local-models-theme';
@@ -35,8 +37,13 @@ const AppShell: React.FC<{
     () => [
       {
         key: '/',
-        icon: <HomeOutlined />,
-        label: <Link to="/">Домашняя</Link>,
+        icon: <TableOutlined />,
+        label: <Link to="/">Первое демо</Link>,
+      },
+      {
+        key: '/local-demo',
+        icon: <StarOutlined />,
+        label: <Link to="/local-demo">Локальное демо</Link>,
       },
     ],
     [],
@@ -137,8 +144,9 @@ const AppShell: React.FC<{
           className={isDarkMode ? 'dark' : 'light'}
         >
           <Routes>
-            <Route path="/" element={<HomePage />} />
-          </Routes>
+            <Route path="/" element={<OnlineDemoPage />} />
+            <Route path="/local-demo" element={<LocalDemoPage />} />
+          </Routes> 
         </Content>
       </Layout>
     </Layout>
