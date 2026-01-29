@@ -15,9 +15,9 @@ export function OnlineInputText({ setQuery }: { setQuery: (query: string) => voi
       </Divider>
       <Flex align="center" gap="large">
         <Input
-          value="найди объекты на геостационарной орбите"
+          value={text}
           onChange={(event) => setText(event.target.value)}
-          placeholder="Напишите запрос или описание объекта"
+          placeholder="Напишите запрос"
         />
         <Button type="primary" onClick={handleSubmit}>
           Отправить

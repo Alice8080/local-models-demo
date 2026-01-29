@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { AudioOutlined, StopOutlined } from '@ant-design/icons';
-import { Button, Divider, Space, Typography, Upload } from 'antd';
+import { Button, Divider, Flex, Space, Typography, Upload } from 'antd';
 import type { UploadFile } from 'antd';
 
 type SpeechRecognitionInstance = {
@@ -115,52 +115,48 @@ export function OnlineInputAudio({
   return (
     <div>
       <Divider titlePlacement="start">
-        <span className="font-bold">Загруженное аудио</span>
-      </Divider>
-      <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-        <Space>
-          <Upload
-            accept="audio/*"
-            showUploadList={false}
-            beforeUpload={handleBeforeUpload}
-            onChange={({ file }) => handleFileChange(file)}
-          >
-            <Button>Загрузить аудио</Button>
-          </Upload>
-        </Space>
-        <Typography.Text>
-          {uploadedFileName
-            ? `Выбран файл: ${uploadedFileName}.`
-            : 'Файл не выбран.'}
-        </Typography.Text>
-        {audioUrl && (
-          <audio controls src={audioUrl} style={{ width: '100%' }} />
-        )}
-      </Space>
-
-      <Divider titlePlacement="start">
         <span className="font-bold">Голосовой ввод</span>
       </Divider>
-      <Space size="large">
-        <Space>
-          <Button
-            icon={isRecording ? <StopOutlined /> : <AudioOutlined />}
-            onClick={isRecording ? handleStopRecording : handleStartRecording}
-            disabled={!isVoiceSupported}
-          >
-            {isRecording ? 'Остановить запись' : 'Начать запись'}
-          </Button>
-          {!isVoiceSupported && (
-            <Typography.Text type="secondary">
-              Голосовой ввод не поддерживается браузером.
-            </Typography.Text>
-          )}
-        </Space>
-        <Typography.Text>
-          {spokenText
-            ? `Распознанный текст: ${spokenText}`
-            : 'Пока нет текста.'}
-        </Typography.Text>
+      <Space size="large" vertical>
+        <Flex align="start" justify="start" gap="middle">
+          <Space direction="vertical" size="middle">
+            <Space>
+              <Upload
+                accept="audio/*"
+                showUploadList={false}
+                beforeUpload={handleBeforeUpload}
+                onChange={({ file }) => handleFileChange(file)}
+              >
+                <Button>Загрузить аудио</Button>
+              </Upload>
+            </Space>
+          </Space>
+          <Space>
+            <Button
+              icon={isRecording ? <StopOutlined /> : <AudioOutlined />}
+              onClick={isRecording ? handleStopRecording : handleStartRecording}
+              disabled={!isVoiceSupported}
+            >
+              {isRecording ? 'Остановить запись' : 'Начать запись'}
+            </Button>
+            {!isVoiceSupported && (
+              <Typography.Text type="secondary">
+                Голосовой ввод не поддерживается браузером.
+              </Typography.Text>
+            )}
+          </Space>
+          <Typography.Text>
+            {spokenText ? spokenText : ''}
+          </Typography.Text>
+        </Flex>
+        <Flex gap="middle" vertical>
+          <Typography.Text>
+            {uploadedFileName
+              ? `Выбран файл: ${uploadedFileName}.`
+              : 'Файл не выбран.'}
+          </Typography.Text>
+          {audioUrl && <audio controls src={audioUrl} className="w-fit" />}
+        </Flex>
       </Space>
     </div>
   );

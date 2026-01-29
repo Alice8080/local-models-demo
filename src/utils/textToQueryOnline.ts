@@ -81,8 +81,7 @@ export async function textToQueryParamsOnline(text: string): Promise<string> {
         { role: 'user', content: text },
       ],
       temperature: 0.1,
-      stream: false,
-      response_format: { type: 'json_object' },
+      stream: false
     }),
   });
 

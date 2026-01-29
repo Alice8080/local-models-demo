@@ -17,7 +17,7 @@ export function InputText({ setQuery }: { setQuery: (query: string) => void }) {
         <Input
           value={text}
           onChange={(event) => setText(event.target.value)}
-          placeholder="Напишите запрос или описание объекта"
+          placeholder="Напишите запрос"
         />
         <Button type="primary" onClick={handleSubmit}>
           Отправить

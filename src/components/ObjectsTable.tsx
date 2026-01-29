@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, Spin, Table } from 'antd';
+import { Alert, Spin, Table, Typography } from 'antd';
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
 import { ObjectsInputForm } from './ObjectsInputForm';
 import { textToQueryParamsOnline } from '../utils/textToQueryOnline';
@@ -68,8 +68,25 @@ export function ObjectsTable({ mode }: Props) {
     };
   }, [query]);
 
-  useEffect(() => {
-    console.log(params);
+  const filtersText = useMemo(() => {
+    if (!params) return '';
+    const operatorLabels: Record<string, string> = {
+      eq: '==',
+      lt: '<',
+      lte: '<=',
+      gt: '>',
+      gte: '>=',
+      ne: '!=',
+    };
+    const searchParams = new URLSearchParams(params);
+    const parts: string[] = [];
+    searchParams.forEach((value, key) => {
+      const [field, operator] = key.split('_');
+      if (!field || !operator) return;
+      const label = operatorLabels[operator] ?? operator;
+      parts.push(`${field} ${label} ${value}`);
+    });
+    return parts.join(', ');
   }, [params]);
 
   useEffect(() => {
@@ -117,7 +134,7 @@ export function ObjectsTable({ mode }: Props) {
         const url = new URL(`${API_BASE_URL}/space-objects`);
         url.searchParams.set('_page', String(page));
         url.searchParams.set('_per_page', String(pageSize));
-        if (params) {
+        if (true) {
           const extraParams = new URLSearchParams(params);
           extraParams.forEach((value, key) => {
             url.searchParams.set(key, value);
@@ -181,6 +198,11 @@ export function ObjectsTable({ mode }: Props) {
     <>
       <ObjectsInputForm mode={mode} setQuery={setQuery} />
       {isQueryLoading && <Spin />}
+      {filtersText && (
+        <Typography.Text type="secondary">
+          Фильтры: {filtersText}
+        </Typography.Text>
+      )}
       {error && <Alert type="error" message={error} showIcon />}
       <Table
         rowKey="id"
