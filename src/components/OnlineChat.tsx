@@ -1,8 +1,32 @@
 import type { BubbleListProps } from '@ant-design/x';
 import { Bubble, Sender } from '@ant-design/x';
-import { Button, Divider, Flex } from 'antd';
-import React from 'react';
+import { Button, Flex, Typography } from 'antd';
+import React, { useEffect } from 'react';
 import { textToQueryParamsOnline } from '../utils/textToQueryOnline';
+
+type SpeechRecognitionInstance = {
+  start: () => void;
+  stop: () => void;
+  lang: string;
+  interimResults: boolean;
+  maxAlternatives: number;
+  onresult: ((event: SpeechRecognitionEvent) => void) | null;
+  onerror: (() => void) | null;
+  onend: (() => void) | null;
+};
+
+type SpeechRecognitionConstructor = new () => SpeechRecognitionInstance;
+
+type SpeechRecognitionEvent = {
+  results: SpeechRecognitionResultList;
+};
+
+declare global {
+  interface Window {
+    SpeechRecognition?: SpeechRecognitionConstructor;
+    webkitSpeechRecognition?: SpeechRecognitionConstructor;
+  }
+}
 
 const useLocale = () => {
   return {
@@ -25,6 +49,7 @@ const useLocale = () => {
     newSystemMessage: 'Новое системное сообщение',
     editMessage: 'Сообщение изменено',
     developerMessage: 'Вы — помощник, который отвечает на вопросы пользователя.',
+    voiceUnsupported: 'Голосовой ввод не поддерживается браузером.',
   };
 };
 
@@ -76,6 +101,10 @@ export function OnlineChat({ setParams }: { setParams: (params: string) => void 
   const [messages, setMessages] = React.useState<ChatMessage[]>([]);
   const [isRequesting, setIsRequesting] = React.useState(false);
   const abortControllerRef = React.useRef<AbortController | null>(null);
+  const [isRecording, setIsRecording] = React.useState(false);
+  const [isVoiceSupported, setIsVoiceSupported] = React.useState(true);
+  const [spokenText, setSpokenText] = React.useState('');
+  const recognitionRef = React.useRef<SpeechRecognitionInstance | null>(null);
 
   const isDefaultMessagesRequesting = false;
 
@@ -85,7 +114,126 @@ export function OnlineChat({ setParams }: { setParams: (params: string) => void 
     }
   };
 
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const SpeechRecognitionClass =
+      window.SpeechRecognition ?? window.webkitSpeechRecognition;
+    setIsVoiceSupported(Boolean(SpeechRecognitionClass));
+  }, []);
+
+  const handleStartRecording = () => {
+    if (typeof window === 'undefined') return;
+    const SpeechRecognitionClass =
+      window.SpeechRecognition ?? window.webkitSpeechRecognition;
+
+    if (!SpeechRecognitionClass) {
+      setIsVoiceSupported(false);
+      return;
+    }
+
+    const recognition = new SpeechRecognitionClass();
+    recognition.lang = 'ru-RU';
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+
+    recognition.onresult = (event: SpeechRecognitionEvent) => {
+      const transcript = event.results[0]?.[0]?.transcript ?? '';
+      setSpokenText(transcript);
+      void sendQuery(transcript);
+    };
+
+    recognition.onerror = () => {
+      setIsRecording(false);
+    };
+
+    recognition.onend = () => {
+      setIsRecording(false);
+    };
+
+    recognitionRef.current = recognition;
+    setIsRecording(true);
+    recognition.start();
+  };
+
+  const handleStopRecording = () => {
+    recognitionRef.current?.stop();
+    setIsRecording(false);
+  };
+
   const chatMessages = messages;
+
+  const handleRecordingChange = (recording: boolean) => {
+    if (recording) {
+      handleStartRecording();
+    } else {
+      handleStopRecording();
+    }
+  };
+
+  const sendQuery = async (query: string) => {
+    const trimmed = query.trim();
+    if (!trimmed || isRequesting) return;
+
+    const userMessage: ChatMessage = {
+      id: Date.now(),
+      message: { role: 'user', content: trimmed },
+      status: 'success',
+    };
+    const assistantMessage: ChatMessage = {
+      id: Date.now() + 1,
+      message: { role: 'assistant', content: locale.waiting },
+      status: 'loading',
+    };
+
+    setMessages((prev) => [...prev, userMessage, assistantMessage]);
+    setIsRequesting(true);
+
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    try {
+      const result = await textToQueryParamsOnline(trimmed, {
+        signal: controller.signal,
+      });
+      setMessages((prev) =>
+        prev.map((message) =>
+          message.id === assistantMessage.id
+            ? {
+                ...message,
+                status: 'success',
+                message: {
+                  role: 'assistant',
+                  content: result || locale.requestFailed,
+                },
+              }
+            : message,
+        ),
+      );
+      setParams(result);
+    } catch (error) {
+      const isAbort = error instanceof DOMException && error.name === 'AbortError';
+      const errorText = error instanceof Error ? error.message : locale.requestFailed;
+      setMessages((prev) =>
+        prev.map((message) =>
+          message.id === assistantMessage.id
+            ? {
+                ...message,
+                status: 'error',
+                message: {
+                  role: 'assistant',
+                  content: isAbort ? locale.requestAborted : errorText,
+                },
+              }
+            : message,
+        ),
+      );
+    } finally {
+      if (abortControllerRef.current === controller) {
+        abortControllerRef.current = null;
+      }
+      setIsRequesting(false);
+    }
+  };
 
   return (
     <Flex vertical gap="middle">
@@ -129,72 +277,22 @@ export function OnlineChat({ setParams }: { setParams: (params: string) => void 
         }}
         onChange={setContent}
         placeholder={locale.placeholder}
+        footer={
+          !isVoiceSupported ? (
+            <Typography.Text type="secondary">
+              {locale.voiceUnsupported}
+            </Typography.Text>
+          ) : spokenText ? (
+            <Typography.Text type="secondary">{spokenText}</Typography.Text>
+          ) : null
+        }
         onSubmit={async (nextContent) => {
-          const trimmed = nextContent.trim();
-          if (!trimmed || isRequesting) return;
-
-          const userMessage: ChatMessage = {
-            id: Date.now(),
-            message: { role: 'user', content: trimmed },
-            status: 'success',
-          };
-          const assistantMessage: ChatMessage = {
-            id: Date.now() + 1,
-            message: { role: 'assistant', content: locale.waiting },
-            status: 'loading',
-          };
-
-          setMessages((prev) => [...prev, userMessage, assistantMessage]);
           setContent('');
-          setIsRequesting(true);
-
-          const controller = new AbortController();
-          abortControllerRef.current = controller;
-
-          try {
-            const result = await textToQueryParamsOnline(trimmed, {
-              signal: controller.signal,
-            });
-            setMessages((prev) =>
-              prev.map((message) =>
-                message.id === assistantMessage.id
-                  ? {
-                      ...message,
-                      status: 'success',
-                      message: {
-                        role: 'assistant',
-                        content: result || locale.requestFailed,
-                      },
-                    }
-                  : message,
-              ),
-            );
-            setParams(result);
-          } catch (error) {
-            const isAbort =
-              error instanceof DOMException && error.name === 'AbortError';
-            const errorText =
-              error instanceof Error ? error.message : locale.requestFailed;
-            setMessages((prev) =>
-              prev.map((message) =>
-                message.id === assistantMessage.id
-                  ? {
-                      ...message,
-                      status: 'error',
-                      message: {
-                        role: 'assistant',
-                        content: isAbort ? locale.requestAborted : errorText,
-                      },
-                    }
-                  : message,
-              ),
-            );
-          } finally {
-            if (abortControllerRef.current === controller) {
-              abortControllerRef.current = null;
-            }
-            setIsRequesting(false);
-          }
+          void sendQuery(nextContent);
+        }}
+        allowSpeech={{
+          recording: isRecording,
+          onRecordingChange: handleRecordingChange,
         }}
       />
     </Flex>
