@@ -1,7 +1,8 @@
+import { ExclamationCircleOutlined, WarningOutlined } from '@ant-design/icons';
 import type { BubbleListProps } from '@ant-design/x';
 import { Bubble, Sender } from '@ant-design/x';
 import { Button, Flex, Typography } from 'antd';
-import React, { useEffect } from 'react';
+import React from 'react';
 import { textToQueryParamsOnline } from '../utils/textToQueryOnline';
 
 type SpeechRecognitionInstance = {
@@ -50,6 +51,8 @@ const useLocale = () => {
     editMessage: 'Сообщение изменено',
     developerMessage: 'Вы — помощник, который отвечает на вопросы пользователя.',
     voiceUnsupported: 'Голосовой ввод не поддерживается браузером.',
+    textOffline: 'Нет подключения к интернету. Текстовый запрос не отправлен.',
+    voiceOffline: 'Нет подключения к интернету. Голосовой ввод недоступен.',
   };
 };
 
@@ -57,6 +60,7 @@ type ChatMessage = {
   id: number;
   message: { role: 'assistant' | 'user' | 'system'; content: string };
   status: 'success' | 'loading' | 'error';
+  severity?: 'error' | 'warning';
 };
 
 function filtersToText(params: string) {
@@ -77,6 +81,9 @@ function filtersToText(params: string) {
     const label = operatorLabels[operator] ?? operator;
     parts.push(`${field} ${label} ${value}`);
   });
+  if (!parts.length && !params.includes('=')) {
+    return params;
+  }
   return parts.join('\n');
 }
 
@@ -84,9 +91,8 @@ function filtersToText(params: string) {
 const role: BubbleListProps['role'] = {
   assistant: {
     placement: 'start',
-    contentRender(content: string) {
-      // Double '\n' in a mark will causes markdown parse as a new paragraph, so we need to replace it with a single '\n'
-      // const newContent = content.replace(/\n\n/g, '<br/><br/>');
+    contentRender(content: string | React.ReactNode) {
+      if (typeof content !== 'string') return content;
       return filtersToText(content);
     },
   },
@@ -104,6 +110,7 @@ export function OnlineChat({ setParams }: { setParams: (params: string) => void 
   const [isRecording, setIsRecording] = React.useState(false);
   const [isVoiceSupported, setIsVoiceSupported] = React.useState(true);
   const [spokenText, setSpokenText] = React.useState('');
+  const [voiceError, setVoiceError] = React.useState<string | null>(null);
   const recognitionRef = React.useRef<SpeechRecognitionInstance | null>(null);
 
   const isDefaultMessagesRequesting = false;
@@ -121,8 +128,17 @@ export function OnlineChat({ setParams }: { setParams: (params: string) => void 
     setIsVoiceSupported(Boolean(SpeechRecognitionClass));
   }, []);
 
+  const isOnline = () =>
+    typeof navigator === 'undefined' ? true : navigator.onLine;
+
   const handleStartRecording = () => {
     if (typeof window === 'undefined') return;
+    if (!isOnline()) {
+      setVoiceError(locale.voiceOffline);
+      setSpokenText('');
+      setIsRecording(false);
+      return;
+    }
     const SpeechRecognitionClass =
       window.SpeechRecognition ?? window.webkitSpeechRecognition;
 
@@ -139,7 +155,8 @@ export function OnlineChat({ setParams }: { setParams: (params: string) => void 
     recognition.onresult = (event: SpeechRecognitionEvent) => {
       const transcript = event.results[0]?.[0]?.transcript ?? '';
       setSpokenText(transcript);
-      void sendQuery(transcript);
+      setVoiceError(null);
+      void sendQuery(transcript, 'voice');
     };
 
     recognition.onerror = () => {
@@ -151,6 +168,7 @@ export function OnlineChat({ setParams }: { setParams: (params: string) => void 
     };
 
     recognitionRef.current = recognition;
+    setVoiceError(null);
     setIsRecording(true);
     recognition.start();
   };
@@ -170,9 +188,39 @@ export function OnlineChat({ setParams }: { setParams: (params: string) => void 
     }
   };
 
-  const sendQuery = async (query: string) => {
+  const appendErrorMessage = (
+    userText: string,
+    errorText: string,
+    severity: ChatMessage['severity'],
+  ) => {
+    const userMessage: ChatMessage = {
+      id: Date.now(),
+      message: { role: 'user', content: userText },
+      status: 'success',
+    };
+    const assistantMessage: ChatMessage = {
+      id: Date.now() + 1,
+      message: { role: 'assistant', content: errorText },
+      status: 'error',
+      severity,
+    };
+    setMessages((prev) => [...prev, userMessage, assistantMessage]);
+  };
+
+  const sendQuery = async (query: string, source: 'text' | 'voice' = 'text') => {
     const trimmed = query.trim();
     if (!trimmed || isRequesting) return;
+    if (!isOnline()) {
+      if (source === 'voice') {
+        setVoiceError(locale.voiceOffline);
+      }
+      appendErrorMessage(
+        trimmed,
+        source === 'voice' ? locale.voiceOffline : locale.textOffline,
+        'warning',
+      );
+      return;
+    }
 
     const userMessage: ChatMessage = {
       id: Date.now(),
@@ -219,6 +267,7 @@ export function OnlineChat({ setParams }: { setParams: (params: string) => void 
             ? {
                 ...message,
                 status: 'error',
+                severity: 'error',
                 message: {
                   role: 'assistant',
                   content: isAbort ? locale.requestAborted : errorText,
@@ -258,13 +307,29 @@ export function OnlineChat({ setParams }: { setParams: (params: string) => void 
       <Bubble.List
         role={role}
         style={{ height: 'fit-content', width: '100%' }}
-        items={chatMessages.map(({ id, message, status }) => ({
-          key: id,
-          role: message.role,
-          status: status,
-          loading: status === 'loading',
-          content: message.content,
-        }))}
+        items={chatMessages.map(({ id, message, status, severity }) => {
+          const isError = status === 'error';
+          const content = isError ? (
+            <Typography.Text type="danger">
+              {severity === 'warning' ? (
+                <WarningOutlined />
+              ) : (
+                <ExclamationCircleOutlined />
+              )}{' '}
+              {message.content}
+            </Typography.Text>
+          ) : (
+            message.content
+          );
+
+          return {
+            key: id,
+            role: message.role,
+            status: status,
+            loading: status === 'loading',
+            content,
+          };
+        })}
       />
       {/* Sender: user input area, supports sending messages and aborting requests */}
       <Sender
@@ -282,13 +347,15 @@ export function OnlineChat({ setParams }: { setParams: (params: string) => void 
             <Typography.Text type="secondary">
               {locale.voiceUnsupported}
             </Typography.Text>
+          ) : voiceError ? (
+            <Typography.Text type="danger"><WarningOutlined />{' '}{voiceError}</Typography.Text>
           ) : spokenText ? (
             <Typography.Text type="secondary">{spokenText}</Typography.Text>
           ) : null
         }
         onSubmit={async (nextContent) => {
           setContent('');
-          void sendQuery(nextContent);
+          void sendQuery(nextContent, 'text');
         }}
         allowSpeech={{
           recording: isRecording,
