@@ -34,60 +34,39 @@ export function ObjectsTable({ mode }: Props) {
   const [isLoadingFields, setIsLoadingFields] = useState(false);
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [query, setQuery] = useState('');
+  // const [query, setQuery] = useState('');
   const [params, setParams] = useState('');
   const [isQueryLoading, setIsQueryLoading] = useState(false);
 
-  useEffect(() => {
-    let isActive = true;
+  // useEffect(() => {
+  //   let isActive = true;
 
-    const resolveParams = async () => {
-      if (!query) {
-        setParams('');
-        setIsQueryLoading(false);
-        return;
-      }
+  //   const resolveParams = async () => {
+  //     if (!query) {
+  //       setParams('');
+  //       setIsQueryLoading(false);
+  //       return;
+  //     }
 
-      setIsQueryLoading(true);
-      try {
-        const nextParams = await textToQueryParamsOnline(query);
-        if (isActive) {
-          setParams(nextParams);
-        }
-      } finally {
-        if (isActive) {
-          setIsQueryLoading(false);
-        }
-      }
-    };
+  //     setIsQueryLoading(true);
+  //     try {
+  //       const nextParams = await textToQueryParamsOnline(query);
+  //       if (isActive) {
+  //         setParams(nextParams);
+  //       }
+  //     } finally {
+  //       if (isActive) {
+  //         setIsQueryLoading(false);
+  //       }
+  //     }
+  //   };
 
-    resolveParams();
+  //   resolveParams();
 
-    return () => {
-      isActive = false;
-    };
-  }, [query]);
-
-  const filtersText = useMemo(() => {
-    if (!params) return '';
-    const operatorLabels: Record<string, string> = {
-      eq: '==',
-      lt: '<',
-      lte: '<=',
-      gt: '>',
-      gte: '>=',
-      ne: '!=',
-    };
-    const searchParams = new URLSearchParams(params);
-    const parts: string[] = [];
-    searchParams.forEach((value, key) => {
-      const [field, operator] = key.split('_');
-      if (!field || !operator) return;
-      const label = operatorLabels[operator] ?? operator;
-      parts.push(`${field} ${label} ${value}`);
-    });
-    return parts.join(', ');
-  }, [params]);
+  //   return () => {
+  //     isActive = false;
+  //   };
+  // }, [query]);
 
   useEffect(() => {
     let isActive = true;
@@ -196,13 +175,8 @@ export function ObjectsTable({ mode }: Props) {
 
   return (
     <>
-      <ObjectsInputForm mode={mode} setQuery={setQuery} />
+      <ObjectsInputForm mode={mode} setParams={setParams} />
       {isQueryLoading && <Spin />}
-      {filtersText && (
-        <Typography.Text type="secondary">
-          Фильтры: {filtersText}
-        </Typography.Text>
-      )}
       {error && <Alert type="error" message={error} showIcon />}
       <Table
         rowKey="id"

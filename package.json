@@ -10,6 +10,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@ant-design/x": "^2.2.0",
+    "@ant-design/x-sdk": "^2.2.0",
     "@browserai/browserai": "^2.0.4",
     "@huggingface/transformers": "^3.7.1",
     "@mlc-ai/web-llm": "^0.2.80",

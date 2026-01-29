@@ -8,13 +8,14 @@ import { OnlineInputText } from './OnlineInputText';
 import { OnlineInputAudio } from './OnlineInputAudio';
 import { InputText } from './inputText/InputText';
 import { InputAudio } from './inputAudio/InputAudio';
+import { OnlineChat } from './OnlineChat';
 
 export function ObjectsInputForm({
   mode,
-  setQuery,
+  setParams,
 }: {
   mode: 'local' | 'online';
-  setQuery: (query: string) => void;
+  setParams: (params: string) => void;
 }) {
   return (
     <Card>
@@ -25,7 +26,8 @@ export function ObjectsInputForm({
             Используйте голосовой или текстовый ввод для поиска объектов.
           </Typography.Text>
         </Space>
-        {mode === 'local' ? (
+        <OnlineChat setParams={setParams} />
+        {/* {mode === 'local' ? (
           <>
             <InputAudio setQuery={setQuery} />
             <InputText setQuery={setQuery} />
@@ -35,7 +37,7 @@ export function ObjectsInputForm({
             <OnlineInputAudio setQuery={setQuery} />
             <OnlineInputText setQuery={setQuery} />
           </>
-        )}
+        )} */}
       </Flex>
     </Card>
   );

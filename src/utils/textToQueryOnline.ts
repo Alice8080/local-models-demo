@@ -61,7 +61,10 @@ const extractJsonObject = (input: string): string | null => {
   return null;
 };
 
-export async function textToQueryParamsOnline(text: string): Promise<string> {
+export async function textToQueryParamsOnline(
+  text: string,
+  options: { signal?: AbortSignal } = {},
+): Promise<string> {
   if (!OPENROUTER_API_KEY) {
     throw new Error('VITE_OPENROUTER_API_KEY is not set');
   }
@@ -74,6 +77,7 @@ export async function textToQueryParamsOnline(text: string): Promise<string> {
       'HTTP-Referer': window.location.origin,
       'X-Title': 'Local Models Demo',
     },
+    signal: options.signal,
     body: JSON.stringify({
       model: OPENROUTER_MODEL,
       messages: [
