@@ -40,6 +40,7 @@ const isQueryParams = (value: unknown): value is QueryParams => {
 
 function sanitize(payload: string): string {
   return payload
+    .replace('opValue', 'value')
     .replace('.}', '}')
     .replace('}]]', '}]}');
 }

@@ -7,30 +7,8 @@ import { Button, Flex, Typography } from 'antd';
 import { textToQueryOnline } from '@/utils/online/textToQueryOnline';
 import { textToQueryLocal } from '@/utils/local/llm/textToQueryLocal';
 import { buildQueryString } from '@/utils/buildQueryString';
-
-type SpeechRecognitionInstance = {
-  start: () => void;
-  stop: () => void;
-  lang: string;
-  interimResults: boolean;
-  maxAlternatives: number;
-  onresult: ((event: SpeechRecognitionEvent) => void) | null;
-  onerror: (() => void) | null;
-  onend: (() => void) | null;
-};
-
-type SpeechRecognitionConstructor = new () => SpeechRecognitionInstance;
-
-type SpeechRecognitionEvent = {
-  results: SpeechRecognitionResultList;
-};
-
-declare global {
-  interface Window {
-    SpeechRecognition?: SpeechRecognitionConstructor;
-    webkitSpeechRecognition?: SpeechRecognitionConstructor;
-  }
-}
+import { useSpeechRecognitionOnline } from '@/utils/online/useSpeechRecognitionOnline';
+import { useSpeechRecognitionLocal } from '@/utils/local/asr/useSpeechRecognitionLocal';
 
 const useLocale = () => {
   return {
@@ -117,11 +95,6 @@ export function Chat({
   const [messages, setMessages] = React.useState<ChatMessage[]>([]);
   const [isRequesting, setIsRequesting] = React.useState(false);
   const abortControllerRef = React.useRef<AbortController | null>(null);
-  const [isRecording, setIsRecording] = React.useState(false);
-  const [isVoiceSupported, setIsVoiceSupported] = React.useState(true);
-  const [spokenText, setSpokenText] = React.useState('');
-  const [voiceError, setVoiceError] = React.useState<string | null>(null);
-  const recognitionRef = React.useRef<SpeechRecognitionInstance | null>(null);
 
   const isDefaultMessagesRequesting = false;
 
@@ -131,72 +104,10 @@ export function Chat({
     }
   };
 
-  React.useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const SpeechRecognitionClass =
-      window.SpeechRecognition ?? window.webkitSpeechRecognition;
-    setIsVoiceSupported(Boolean(SpeechRecognitionClass));
-  }, []);
-
   const isOnline = () =>
     typeof navigator === 'undefined' ? true : navigator.onLine;
 
-  const handleStartRecording = () => {
-    if (typeof window === 'undefined') return;
-    if (!isOnline()) {
-      setVoiceError(locale.voiceOffline);
-      setSpokenText('');
-      setIsRecording(false);
-      return;
-    }
-    const SpeechRecognitionClass =
-      window.SpeechRecognition ?? window.webkitSpeechRecognition;
-
-    if (!SpeechRecognitionClass) {
-      setIsVoiceSupported(false);
-      return;
-    }
-
-    const recognition = new SpeechRecognitionClass();
-    recognition.lang = 'ru-RU';
-    recognition.interimResults = false;
-    recognition.maxAlternatives = 1;
-
-    recognition.onresult = (event: SpeechRecognitionEvent) => {
-      const transcript = event.results[0]?.[0]?.transcript ?? '';
-      setSpokenText(transcript);
-      setVoiceError(null);
-      void sendQuery(transcript, 'voice');
-    };
-
-    recognition.onerror = () => {
-      setIsRecording(false);
-    };
-
-    recognition.onend = () => {
-      setIsRecording(false);
-    };
-
-    recognitionRef.current = recognition;
-    setVoiceError(null);
-    setIsRecording(true);
-    recognition.start();
-  };
-
-  const handleStopRecording = () => {
-    recognitionRef.current?.stop();
-    setIsRecording(false);
-  };
-
   const chatMessages = messages;
-
-  const handleRecordingChange = (recording: boolean) => {
-    if (recording) {
-      handleStartRecording();
-    } else {
-      handleStopRecording();
-    }
-  };
 
   const appendErrorMessage = (
     userText: string,
@@ -217,10 +128,41 @@ export function Chat({
     setMessages((prev) => [...prev, userMessage, assistantMessage]);
   };
 
-  const sendQuery = async (
+  const onlineSpeech = useSpeechRecognitionOnline({
+    onResult: (transcript) => {
+      void sendQuery(transcript, 'voice');
+    },
+    offlineMessage: locale.voiceOffline,
+  });
+
+  const localSpeech = useSpeechRecognitionLocal({
+    onResult: (transcript) => {
+      void sendQuery(transcript, 'voice');
+    },
+  });
+
+  const {
+    isRecording,
+    isVoiceSupported,
+    spokenText,
+    voiceError,
+    setVoiceError,
+    startRecording,
+    stopRecording,
+  } = mode === 'online' ? onlineSpeech : localSpeech;
+
+  const handleRecordingChange = (recording: boolean) => {
+    if (recording) {
+      startRecording();
+    } else {
+      stopRecording();
+    }
+  };
+
+  async function sendQuery(
     query: string,
     source: 'text' | 'voice' = 'text',
-  ) => {
+  ) {
     const trimmed = query.trim();
     if (!trimmed || isRequesting) return;
     if (!isOnline()) {
@@ -302,7 +244,7 @@ export function Chat({
       }
       setIsRequesting(false);
     }
-  };
+  }
 
   return (
     <Flex vertical gap="middle">
