@@ -1,12 +1,4 @@
-type QueryFilter = {
-  field: string;
-  operator: 'eq' | 'lt' | 'lte' | 'gt' | 'gte' | 'ne';
-  value: string | number | boolean;
-};
-
-type QueryParams = {
-  filters: QueryFilter[];
-};
+import type { QueryFilter, QueryParams } from '../buildQueryString';
 
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const OPENROUTER_MODEL = import.meta.env.VITE_OPENROUTER_MODEL as
@@ -28,21 +20,10 @@ const isQueryParams = (value: unknown): value is QueryParams => {
     const filterRecord = filter as Record<string, unknown>;
     return (
       typeof filterRecord.field === 'string' &&
-      typeof filterRecord.operator === 'string' &&
+      typeof filterRecord.op === 'string' &&
       'value' in filterRecord
     );
   });
-};
-
-const buildQueryString = (filters: QueryFilter[]) => {
-  if (!filters.length) return '';
-  return filters
-    .map((filter) => {
-      const key = `${filter.field}_${filter.operator}`;
-      const value = String(filter.value);
-      return `${encodeURIComponent(key)}=${encodeURIComponent(value)}`;
-    })
-    .join('&');
 };
 
 const extractJsonObject = (input: string): string | null => {
@@ -61,10 +42,10 @@ const extractJsonObject = (input: string): string | null => {
   return null;
 };
 
-export async function textToQueryParamsOnline(
+export async function textToQueryOnline(
   text: string,
   options: { signal?: AbortSignal } = {},
-): Promise<string> {
+): Promise<QueryFilter[]> {
   if (!OPENROUTER_API_KEY) {
     throw new Error('VITE_OPENROUTER_API_KEY is not set');
   }
@@ -85,7 +66,7 @@ export async function textToQueryParamsOnline(
         { role: 'user', content: text },
       ],
       temperature: 0.1,
-      stream: false
+      stream: false,
     }),
   });
 
@@ -101,16 +82,16 @@ export async function textToQueryParamsOnline(
   const content = payload.choices?.[0]?.message?.content ?? '';
   const jsonText = extractJsonObject(content);
   if (!jsonText) {
-    return '';
+    return [];
   }
   try {
     const parsed = JSON.parse(jsonText) as QueryParams;
     if (isQueryParams(parsed)) {
-      return buildQueryString(parsed.filters);
+      return parsed.filters;
     }
   } catch {
     // fall through
   }
 
-  return '';
+  return [];
 }

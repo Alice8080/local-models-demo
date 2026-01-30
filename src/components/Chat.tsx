@@ -1,9 +1,12 @@
+import React from 'react';
 import { ExclamationCircleOutlined, WarningOutlined } from '@ant-design/icons';
 import type { BubbleListProps } from '@ant-design/x';
 import { Bubble, Sender } from '@ant-design/x';
 import { Button, Flex, Typography } from 'antd';
-import React from 'react';
-import { textToQueryParamsOnline } from '../utils/textToQueryOnline';
+
+import { textToQueryOnline } from '@/utils/online/textToQueryOnline';
+import { textToQueryLocal } from '@/utils/local/llm/textToQueryLocal';
+import { buildQueryString } from '@/utils/buildQueryString';
 
 type SpeechRecognitionInstance = {
   start: () => void;
@@ -49,7 +52,8 @@ const useLocale = () => {
     newAIResponse: 'Новый ответ модели',
     newSystemMessage: 'Новое системное сообщение',
     editMessage: 'Сообщение изменено',
-    developerMessage: 'Вы — помощник, который отвечает на вопросы пользователя.',
+    developerMessage:
+      'Вы — помощник, который отвечает на вопросы пользователя.',
     voiceUnsupported: 'Голосовой ввод не поддерживается браузером.',
     textOffline: 'Нет подключения к интернету. Текстовый запрос не отправлен.',
     voiceOffline: 'Нет подключения к интернету. Голосовой ввод недоступен.',
@@ -65,7 +69,7 @@ type ChatMessage = {
 
 function filtersToText(params: string) {
   if (!params) return '';
-  const operatorLabels: Record<string, string> = {
+  const opLabels: Record<string, string> = {
     eq: '==',
     lt: '<',
     lte: '<=',
@@ -76,9 +80,9 @@ function filtersToText(params: string) {
   const searchParams = new URLSearchParams(params);
   const parts: string[] = [];
   searchParams.forEach((value, key) => {
-    const [field, operator] = key.split('_');
-    if (!field || !operator) return;
-    const label = operatorLabels[operator] ?? operator;
+    const [field, op] = key.split('_');
+    if (!field || !op) return;
+    const label = opLabels[op] ?? op;
     parts.push(`${field} ${label} ${value}`);
   });
   if (!parts.length && !params.includes('=')) {
@@ -101,7 +105,13 @@ const role: BubbleListProps['role'] = {
   },
 };
 
-export function OnlineChat({ setParams }: { setParams: (params: string) => void }) {
+export function Chat({
+  mode,
+  setParams,
+}: {
+  mode: 'local' | 'online';
+  setParams: (params: string) => void;
+}) {
   const [content, setContent] = React.useState('');
   const locale = useLocale();
   const [messages, setMessages] = React.useState<ChatMessage[]>([]);
@@ -207,7 +217,10 @@ export function OnlineChat({ setParams }: { setParams: (params: string) => void 
     setMessages((prev) => [...prev, userMessage, assistantMessage]);
   };
 
-  const sendQuery = async (query: string, source: 'text' | 'voice' = 'text') => {
+  const sendQuery = async (
+    query: string,
+    source: 'text' | 'voice' = 'text',
+  ) => {
     const trimmed = query.trim();
     if (!trimmed || isRequesting) return;
     if (!isOnline()) {
@@ -240,9 +253,14 @@ export function OnlineChat({ setParams }: { setParams: (params: string) => void 
     abortControllerRef.current = controller;
 
     try {
-      const result = await textToQueryParamsOnline(trimmed, {
-        signal: controller.signal,
-      });
+      const raw =
+        mode === 'online'
+          ? await textToQueryOnline(trimmed, {
+              signal: controller.signal,
+            })
+          : await textToQueryLocal(trimmed);
+      const result = buildQueryString(raw);
+      console.log(raw, result)
       setMessages((prev) =>
         prev.map((message) =>
           message.id === assistantMessage.id
@@ -259,8 +277,10 @@ export function OnlineChat({ setParams }: { setParams: (params: string) => void 
       );
       setParams(result);
     } catch (error) {
-      const isAbort = error instanceof DOMException && error.name === 'AbortError';
-      const errorText = error instanceof Error ? error.message : locale.requestFailed;
+      const isAbort =
+        error instanceof DOMException && error.name === 'AbortError';
+      const errorText =
+        error instanceof Error ? error.message : locale.requestFailed;
       setMessages((prev) =>
         prev.map((message) =>
           message.id === assistantMessage.id
@@ -348,7 +368,9 @@ export function OnlineChat({ setParams }: { setParams: (params: string) => void 
               {locale.voiceUnsupported}
             </Typography.Text>
           ) : voiceError ? (
-            <Typography.Text type="danger"><WarningOutlined />{' '}{voiceError}</Typography.Text>
+            <Typography.Text type="danger">
+              <WarningOutlined /> {voiceError}
+            </Typography.Text>
           ) : spokenText ? (
             <Typography.Text type="secondary">{spokenText}</Typography.Text>
           ) : null
@@ -364,4 +386,4 @@ export function OnlineChat({ setParams }: { setParams: (params: string) => void 
       />
     </Flex>
   );
-};
+}

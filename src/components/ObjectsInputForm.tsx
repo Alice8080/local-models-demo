@@ -4,7 +4,7 @@ import {
   Space,
   Typography,
 } from 'antd';
-import { OnlineChat } from './OnlineChat';
+import { Chat } from './Chat';
 
 export function ObjectsInputForm({
   mode,
@@ -22,7 +22,7 @@ export function ObjectsInputForm({
             Используйте голосовой или текстовый ввод для поиска объектов.
           </Typography.Text>
         </Space>
-        <OnlineChat setParams={setParams} />
+        <Chat mode={mode} setParams={setParams} />
       </Flex>
     </Card>
   );
