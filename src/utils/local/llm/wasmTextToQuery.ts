@@ -1,97 +1,53 @@
-import { env, pipeline } from '@xenova/transformers';
+import { ModelManager, Wllama, type Model } from '@wllama/wllama';
+import wllamaSingle from '@wllama/wllama/src/single-thread/wllama.wasm?url';
+import wllamaMulti from '@wllama/wllama/src/multi-thread/wllama.wasm?url';
 
-const WASM_MODEL_ID = 'user808080/qwen2.5-0.5b-onnx';
+type RunWasmOptions = {
+  onPartial?: (value: string) => void;
+  timeoutMs?: number;
+};
 
-env.allowRemoteModels = true;
-env.allowLocalModels = false;
-env.useBrowserCache = true;
-env.remoteHost = 'https://huggingface.co';
-env.remotePathTemplate = '/{model}/resolve/{revision}';
-env.backends.onnx.wasm.numThreads = Math.min(
-  typeof navigator !== 'undefined' && navigator.hardwareConcurrency
-    ? navigator.hardwareConcurrency
-    : 4,
-  4,
-);
-env.backends.onnx.wasm.numThreads = 2;
-env.backends.onnx.wasm.proxy = true;
+const DEFAULT_MODEL_URL =
+  'https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q8_0.gguf';
 
-let wasmGeneratorPromise: Promise<unknown> | null = null;
-let fetchPatched = false;
+const MODEL_URL =
+  (import.meta.env.VITE_WLLAMA_MODEL_URL as string | undefined) ??
+  DEFAULT_MODEL_URL;
 
-async function patchTokenizerFetch() {
-  if (fetchPatched) return;
-  fetchPatched = true;
+const WLLAMA_CONFIG_PATHS = {
+  'single-thread/wllama.wasm': wllamaSingle,
+  'multi-thread/wllama.wasm': wllamaMulti,
+};
 
-  const originalFetch = globalThis.fetch.bind(globalThis);
-  globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
-    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
-    if (url.includes(`${WASM_MODEL_ID}/resolve/`) && url.endsWith('/tokenizer.json')) {
-      const response = await originalFetch(input, init);
-      try {
-        const json = await response.clone().json();
-        const normalizeMerges = (merges: unknown) => {
-          if (!Array.isArray(merges)) return merges;
-          return merges.map((entry) => {
-            if (Array.isArray(entry)) {
-              return entry.join(' ');
-            }
-            if (typeof entry === 'string') return entry;
-            return String(entry);
-          });
-        };
+const modelManager = new ModelManager();
+let wllamaInstance: Wllama | null = null;
+let loadPromise: Promise<void> | null = null;
 
-        if (json?.model?.merges) {
-          json.model.merges = normalizeMerges(json.model.merges);
-        }
-        if (json?.merges) {
-          json.merges = normalizeMerges(json.merges);
-        }
-
-        return new Response(JSON.stringify(json), {
-          status: response.status,
-          statusText: response.statusText,
-          headers: response.headers,
-        });
-      } catch {
-        return response;
-      }
-    }
-    return originalFetch(input, init);
+const ensureDocumentShim = () => {
+  if (typeof document !== 'undefined') return;
+  const base = typeof self !== 'undefined' && self.location ? self.location.href : '';
+  (globalThis as { document?: { baseURI: string; URL: string } }).document = {
+    baseURI: base,
+    URL: base,
   };
-}
+};
 
-async function getWasmGenerator() {
-  if (wasmGeneratorPromise) return wasmGeneratorPromise;
-  await patchTokenizerFetch();
+const getCpuThreads = () => {
+  const concurrency =
+    typeof navigator !== 'undefined' && navigator.hardwareConcurrency
+      ? navigator.hardwareConcurrency
+      : 4;
+  return Math.max(1, Math.min(concurrency, 4));
+};
 
-  const baseOptions = {
-    device: 'wasm',
-    revision: 'main',
-    subfolder: 'onnx',
-  } as Record<string, unknown>;
+const buildChatPrompt = (systemPrompt: string, userText: string) =>
+  [
+    `<|im_start|>system\n${systemPrompt.trim()}<|im_end|>\n`,
+    `<|im_start|>user\n${userText}<|im_end|>\n`,
+    '<|im_start|>assistant\n',
+  ].join('');
 
-  wasmGeneratorPromise = pipeline('text-generation', WASM_MODEL_ID, {
-    ...baseOptions,
-    dtype: 'q8',
-    model_file_name: 'model',
-    use_external_data_format: false,
-  } as Record<string, unknown>);
-
-  try {
-    return await wasmGeneratorPromise;
-  } catch(err) {
-    wasmGeneratorPromise = pipeline('text-generation', WASM_MODEL_ID, {
-      ...baseOptions,
-      dtype: 'fp32',
-      model_file_name: 'model',
-      use_external_data_format: true,
-    } as Record<string, unknown>);
-    return wasmGeneratorPromise;
-  }
-}
-
-function toSafeText(value: unknown) {
+const toSafeText = (value: unknown) => {
   if (typeof value === 'string') return value;
   if (value === null || value === undefined) return '';
   if (typeof value === 'number' || typeof value === 'boolean') return String(value);
@@ -100,9 +56,9 @@ function toSafeText(value: unknown) {
   } catch {
     return String(value);
   }
-}
+};
 
-function extractJsonObject(value: string) {
+const extractJsonObject = (value: string) => {
   const start = value.indexOf('{');
   if (start === -1) return '';
   let depth = 0;
@@ -137,13 +93,9 @@ function extractJsonObject(value: string) {
     }
   }
   return '';
-}
+};
 
-function buildStrictJsonPrompt(contextPrompt: string, text: string) {
-  return `${contextPrompt}\n\nЗапрос: ${text}\nОтвет: {"filters":[`;
-}
-
-function finalizeJsonFromCompletion(raw: string) {
+const finalizeJsonFromCompletion = (raw: string) => {
   const trimmed = raw.replace(/\u0000/g, '').trim();
   const direct = extractJsonObject(trimmed);
   if (direct) return direct;
@@ -180,22 +132,80 @@ function finalizeJsonFromCompletion(raw: string) {
   }
 
   return '';
+};
+
+async function getCachedOrDownloadModel(): Promise<Model> {
+  const cached = (await modelManager.getModels()).find(
+    (model) => model.url === MODEL_URL,
+  );
+  if (cached) return cached;
+  return modelManager.downloadModel(MODEL_URL);
 }
 
-export async function runWasmTextToQuery(text: string, contextPrompt: string) {
-  const safeText = toSafeText(text);
-  const generator = (await getWasmGenerator()) as (
-    input: unknown,
-    options?: Record<string, unknown>,
-  ) => Promise<Array<{ generated_text?: string }>>;
+async function ensureModelLoaded() {
+  if (loadPromise) return loadPromise;
+  loadPromise = (async () => {
+    if (!wllamaInstance) {
+      ensureDocumentShim();
+      wllamaInstance = new Wllama(WLLAMA_CONFIG_PATHS);
+    }
+    const model = await getCachedOrDownloadModel();
+    await wllamaInstance.loadModel(model, {
+      n_threads: getCpuThreads(),
+      n_ctx: 2048,
+      n_batch: 128,
+    });
+  })();
 
-  const output = await generator(buildStrictJsonPrompt(contextPrompt, safeText), {
-    max_new_tokens: 200,
-    do_sample: false,
-    temperature: 0,
-    return_full_text: false,
+  try {
+    await loadPromise;
+  } catch (error) {
+    loadPromise = null;
+    throw error;
+  }
+}
+
+export async function runWasmTextToQuery(
+  text: string,
+  contextPrompt: string,
+  options: RunWasmOptions = {},
+): Promise<string> {
+  await ensureModelLoaded();
+  if (!wllamaInstance) {
+    throw new Error('Wllama instance is not initialized');
+  }
+
+  const prompt = buildChatPrompt(contextPrompt, toSafeText(text));
+  let timedOut = false;
+  let timeoutId: number | undefined;
+
+  if (options.timeoutMs && options.timeoutMs > 0) {
+    timeoutId = self.setTimeout(() => {
+      timedOut = true;
+    }, options.timeoutMs);
+  }
+
+  const result = await wllamaInstance.createCompletion(prompt, {
+    nPredict: 256,
+    useCache: true,
+    sampling: {
+      temp: 0,
+    },
+    onNewToken(_token, _piece, currentText, optionals) {
+      options.onPartial?.(currentText);
+      if (timedOut) {
+        optionals.abortSignal();
+      }
+    },
   });
-  const raw = output?.[0]?.generated_text ?? '';
-  console.log({raw})
-  return finalizeJsonFromCompletion(raw) || raw;
+
+  if (timeoutId) {
+    self.clearTimeout(timeoutId);
+  }
+
+  if (timedOut) {
+    throw new Error('Wllama generation timed out');
+  }
+
+  return finalizeJsonFromCompletion(result) || result;
 }

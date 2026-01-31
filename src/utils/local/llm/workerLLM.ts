@@ -1,6 +1,6 @@
 import { CreateMLCEngine } from '@mlc-ai/web-llm';
 import type { ChatCompletionMessageParam } from '@mlc-ai/web-llm';
-import { runWasmTextToQuery } from './wasmTextToQuery';
+import { runWasmTextToQuery } from './wasm';
 
 type WorkerRequest = {
   id: number;
@@ -9,7 +9,8 @@ type WorkerRequest = {
 
 type WorkerResponse =
   | { id: number; result: string }
-  | { id: number; error: string };
+  | { id: number; error: string }
+  | { id: number; partial: string };
 
 const MODEL_URL = import.meta.env.VITE_MODEL_URL as string | undefined;
 const MODEL_LIB_URL = import.meta.env.VITE_MODEL_LIB_URL as string | undefined;
@@ -42,17 +43,28 @@ async function getEngine() {
   return enginePromise;
 }
 
-const contextPrompt = import.meta.env.VITE_SYSTEM_PROMPT_LOCAL as string | undefined;
+const contextPrompt = import.meta.env.VITE_SYSTEM_PROMPT_LOCAL as
+  | string
+  | undefined;
 if (!contextPrompt) {
   throw new Error('VITE_SYSTEM_PROMPT_LOCAL is not set');
 }
+
 const requiredContextPrompt = contextPrompt;
-const wasmContextPrompt = `${requiredContextPrompt}\n\nСтрогий формат для WASM: верни только валидный JSON-объект {"filters":[...]} без текста, без кода, без Markdown, без пояснений.`;
+const wasmContextPrompt = import.meta.env.VITE_SYSTEM_PROMPT_LOCAL_WASM as
+  | string
+  | undefined;
+if (!wasmContextPrompt) {
+  throw new Error('VITE_SYSTEM_PROMPT_LOCAL_WASM is not set');
+}
+
+const requiredWasmContextPrompt = wasmContextPrompt;
 
 function toSafeText(value: unknown) {
   if (typeof value === 'string') return value;
   if (value === null || value === undefined) return '';
-  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (typeof value === 'number' || typeof value === 'boolean')
+    return String(value);
   try {
     return JSON.stringify(value);
   } catch {
@@ -60,7 +72,10 @@ function toSafeText(value: unknown) {
   }
 }
 
-async function handleRequest(text: string) {
+async function handleRequest(
+  text: string,
+  onPartial?: (value: string) => void,
+) {
   const safeText = toSafeText(text);
 
   if (hasWebGPU) {
@@ -77,7 +92,10 @@ async function handleRequest(text: string) {
     return res.choices?.[0]?.message?.content ?? '';
   }
 
-  return runWasmTextToQuery(safeText, wasmContextPrompt);
+  return runWasmTextToQuery(safeText, requiredWasmContextPrompt, {
+    onPartial,
+    timeoutMs: 120000,
+  });
 }
 
 self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
@@ -85,12 +103,23 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
   let response: WorkerResponse;
 
   try {
-    const result = await handleRequest(text);
+    const result = await handleRequest(text, (partial) => {
+      self.postMessage({ id, partial });
+    });
     response = { id, result };
   } catch (error) {
     if (hasWebGPU) {
       try {
-        const result = await runWasmTextToQuery(toSafeText(text), wasmContextPrompt);
+        const result = await runWasmTextToQuery(
+          toSafeText(text),
+          requiredWasmContextPrompt,
+          {
+            onPartial: (partial) => {
+              self.postMessage({ id, partial });
+            },
+            timeoutMs: 120000,
+          },
+        );
         response = { id, result };
       } catch (fallbackError) {
         console.error(fallbackError);
