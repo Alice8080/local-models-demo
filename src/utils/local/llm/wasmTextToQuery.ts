@@ -7,13 +7,10 @@ type RunWasmOptions = {
   timeoutMs?: number;
 };
 
-const DEFAULT_MODEL_URL =
-  'https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q8_0.gguf';
-
-const MODEL_URL =
-  (import.meta.env.VITE_WLLAMA_MODEL_URL as string | undefined) ??
-  DEFAULT_MODEL_URL;
-
+const MODEL_URL = (import.meta.env.VITE_WLLAMA_MODEL_URL as string | undefined) ?? '';
+if (!MODEL_URL) {
+  throw new Error('VITE_WLLAMA_MODEL_URL is not set');
+}
 const WLLAMA_CONFIG_PATHS = {
   'single-thread/wllama.wasm': wllamaSingle,
   'multi-thread/wllama.wasm': wllamaMulti,
@@ -95,8 +92,35 @@ const extractJsonObject = (value: string) => {
   return '';
 };
 
+const stripCodeFences = (value: string) => {
+  const trimmed = value.trim();
+  if (!trimmed.startsWith('```')) return trimmed;
+  return trimmed.replace(/^```[a-zA-Z0-9_-]*\s*/i, '').replace(/```$/, '').trim();
+};
+
+const normalizeJsonResult = (value: unknown) => {
+  if (Array.isArray(value)) {
+    return JSON.stringify({ filters: value });
+  }
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    if (Array.isArray(record.filters)) {
+      return JSON.stringify({ filters: record.filters });
+    }
+  }
+  return '';
+};
+
 const finalizeJsonFromCompletion = (raw: string) => {
-  const trimmed = raw.replace(/\u0000/g, '').trim();
+  const trimmed = stripCodeFences(raw.replace(/\u0000/g, '')).trim();
+  try {
+    const parsed = JSON.parse(trimmed);
+    const normalized = normalizeJsonResult(parsed);
+    if (normalized) return normalized;
+  } catch {
+    // ignore, continue with heuristic parsing
+  }
+
   const direct = extractJsonObject(trimmed);
   if (direct) return direct;
 
@@ -113,7 +137,7 @@ const finalizeJsonFromCompletion = (raw: string) => {
       : `{"filters":[${body}]}`;
     try {
       const parsed = JSON.parse(candidate);
-      return JSON.stringify(parsed);
+      return normalizeJsonResult(parsed);
     } catch {
       return '';
     }
@@ -125,7 +149,7 @@ const finalizeJsonFromCompletion = (raw: string) => {
     const candidate = `{"filters":[${body}]}`;
     try {
       const parsed = JSON.parse(candidate);
-      return JSON.stringify(parsed);
+      return normalizeJsonResult(parsed);
     } catch {
       return '';
     }
@@ -209,3 +233,5 @@ export async function runWasmTextToQuery(
 
   return finalizeJsonFromCompletion(result) || result;
 }
+
+
