@@ -11,6 +11,8 @@ import {
 import {
   Button,
   ConfigProvider,
+  Drawer,
+  Grid,
   Layout,
   Menu,
   Space,
@@ -31,99 +33,112 @@ const AppShell: React.FC<{
   onToggleTheme: (value: boolean) => void;
 }> = ({ isDarkMode, onToggleTheme }) => {
   const [collapsed, setCollapsed] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const { token } = theme.useToken();
+  const screens = Grid.useBreakpoint();
+  const isMobile = !screens.md;
 
   const menuItems = useMemo(
     () => [
       {
         key: '/',
-        icon: <TableOutlined />,
-        label: <Link to="/">Первое демо</Link>,
+        icon: <StarOutlined />,
+        label: <Link to="/">Локальное демо</Link>,
       },
       {
-        key: '/local-demo',
-        icon: <StarOutlined />,
-        label: <Link to="/local-demo">Локальное демо</Link>,
+        key: '/online-demo',
+        icon: <TableOutlined />,
+        label: <Link to="/online-demo">Онлайн демо</Link>,
       },
     ],
     [],
   );
 
   return (
-    <Layout style={{ minHeight: '100vh' }}>
-      <Sider
-        collapsible
-        trigger={null}
-        collapsed={collapsed}
-        width={240}
-        style={{
-          background: token.colorBgContainer,
-          borderRight: `1px solid ${token.colorSplit}`,
-        }}
-      >
-        <div
+    <Layout className="min-h-screen">
+      {!isMobile && (
+        <Sider
+          collapsible
+          trigger={null}
+          collapsed={collapsed}
+          width={240}
+          className="border-r"
           style={{
-            height: 64,
-            display: 'flex',
-            alignItems: 'center',
-            paddingInline: collapsed ? 16 : 20,
-            gap: 12,
-            borderBottom: `1px solid ${token.colorSplit}`,
+            background: token.colorBgContainer,
+            borderRightColor: token.colorSplit,
           }}
         >
           <div
-            style={{
-              width: 36,
-              height: 36,
-              borderRadius: 12,
-              background: token.colorPrimary,
-              display: 'grid',
-              placeItems: 'center',
-              color: token.colorWhite,
-              fontWeight: 700,
-            }}
+            className={`flex h-16 items-center gap-3 border-b ${
+              collapsed ? 'px-4' : 'px-5'
+            }`}
+            style={{ borderBottomColor: token.colorSplit }}
           >
-            LM
-          </div>
-          {!collapsed && (
-            <div>
-              <Typography.Text strong style={{ display: 'block' }}>
-                Local Models
-              </Typography.Text>
-              <Typography.Text type="secondary">Client-side AI</Typography.Text>
+            <div
+              className="grid h-9 w-9 place-items-center rounded-xl font-bold"
+              style={{
+                background: token.colorPrimary,
+                color: token.colorWhite,
+              }}
+            >
+              LM
             </div>
-          )}
-        </div>
-        <Menu
-          mode="inline"
-          items={menuItems}
-          style={{ borderInline: 'none' }}
-        />
-      </Sider>
+            {!collapsed && (
+              <div>
+                <Typography.Text strong className="block">
+                  Local Models
+                </Typography.Text>
+                <Typography.Text type="secondary">Client-side AI</Typography.Text>
+              </div>
+            )}
+          </div>
+          <Menu
+            mode="inline"
+            items={menuItems}
+            className="border-0"
+          />
+        </Sider>
+      )}
       <Layout>
         <Header
+          className="border-b !px-6"
           style={{
-            paddingInline: 16,
             background: token.colorBgContainer,
-            borderBottom: `1px solid ${token.colorSplit}`,
+            borderBottomColor: token.colorSplit,
           }}
         >
-          <Space
-            align="center"
-            style={{ width: '100%', justifyContent: 'space-between' }}
-          >
-            <Space align="center" size={12}>
+          <div className="flex w-full items-center justify-between gap-2">
+            <Space align="center" className="min-w-0">
               <Button
                 type="text"
-                icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
-                onClick={() => setCollapsed((prev) => !prev)}
+                icon={
+                  isMobile ? (
+                    <MenuUnfoldOutlined />
+                  ) : collapsed ? (
+                    <MenuUnfoldOutlined />
+                  ) : (
+                    <MenuFoldOutlined />
+                  )
+                }
+                onClick={() => {
+                  if (isMobile) {
+                    setIsMobileMenuOpen((prev) => !prev);
+                  } else {
+                    setCollapsed((prev) => !prev);
+                  }
+                }}
               />
-              <Typography.Title level={4} style={{ margin: 0 }}>
+              <Typography.Title
+                level={isMobile ? 5 : 4}
+                className="m-0 min-w-0 truncate text-base sm:text-lg"
+              >
                 Демо локальных моделей
               </Typography.Title>
             </Space>
-            <Space align="center" size={12}>
-              <Typography.Text type="secondary">Тема</Typography.Text>
+            <Space
+              align="center"
+              className="justify-start w-auto justify-end"
+            >
               <Switch
                 checked={isDarkMode}
                 onChange={onToggleTheme}
@@ -131,24 +146,56 @@ const AppShell: React.FC<{
                 unCheckedChildren={<SunFilled />}
               />
             </Space>
-          </Space>
+          </div>
         </Header>
         <Content
+          className={`min-h-[calc(100vh-64px-56px)] p-4 md:p-6 mx-3 my-4 sm:mx-4 sm:my-6 ${
+            isDarkMode ? 'dark' : 'light'
+          }`}
           style={{
-            margin: '24px 16px',
-            padding: 24,
-            minHeight: 'calc(100vh - 64px - 56px)',
             background: token.colorBgContainer,
             borderRadius: token.borderRadiusLG,
           }}
-          className={isDarkMode ? 'dark' : 'light'}
         >
           <Routes>
-            <Route path="/" element={<OnlineDemoPage />} />
-            <Route path="/local-demo" element={<LocalDemoPage />} />
+          <Route path="/" element={<LocalDemoPage />} />
+          <Route path="/online-demo" element={<OnlineDemoPage />} />
           </Routes> 
         </Content>
       </Layout>
+      <Drawer
+        open={isMobile && isMobileMenuOpen}
+        onClose={() => setIsMobileMenuOpen(false)}
+        placement="left"
+        width={260}
+        classNames={{ body: 'p-0', header: 'p-4' }}
+        title={
+          <Space align="center" size={12}>
+            <div
+              className="grid h-8 w-8 place-items-center rounded-lg font-bold"
+              style={{
+                background: token.colorPrimary,
+                color: token.colorWhite,
+              }}
+            >
+              LM
+            </div>
+            <div>
+              <Typography.Text strong className="block">
+                Local Models
+              </Typography.Text>
+              <Typography.Text type="secondary">Client-side AI</Typography.Text>
+            </div>
+          </Space>
+        }
+      >
+        <Menu
+          mode="inline"
+          items={menuItems}
+          className="border-0"
+          onClick={() => setIsMobileMenuOpen(false)}
+        />
+      </Drawer>
     </Layout>
   );
 };
