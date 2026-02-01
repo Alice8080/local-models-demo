@@ -12,7 +12,6 @@ import { useSpeechRecognitionLocal } from '@/utils/local/asr/useSpeechRecognitio
 
 const useLocale = () => {
   return {
-    abort: 'Отменить',
     addUserMessage: 'Добавить сообщение пользователя',
     addAIMessage: 'Добавить ответ модели',
     addSystemMessage: 'Добавить системное сообщение',
@@ -24,6 +23,7 @@ const useLocale = () => {
     noMessages: 'Сообщений пока нет, задайте вопрос',
     requesting: 'Запрос выполняется',
     qaCompleted: 'Ответ получен',
+    requestSucceeded: 'Запрос выполнен',
     retry: 'Повторить',
     currentStatus: 'Текущий статус:',
     newUserMessage: 'Новое сообщение пользователя',
@@ -35,6 +35,7 @@ const useLocale = () => {
     voiceUnsupported: 'Голосовой ввод не поддерживается браузером.',
     textOffline: 'Нет подключения к интернету. Текстовый запрос не отправлен.',
     voiceOffline: 'Нет подключения к интернету. Голосовой ввод недоступен.',
+    voiceProcessing: 'Обработка аудиозаписи...',
   };
 };
 
@@ -45,37 +46,12 @@ type ChatMessage = {
   severity?: 'error' | 'warning';
 };
 
-function filtersToText(params: string) {
-  if (!params) return '';
-  const opLabels: Record<string, string> = {
-    eq: '==',
-    lt: '<',
-    lte: '<=',
-    gt: '>',
-    gte: '>=',
-    ne: '!=',
-  };
-  const searchParams = new URLSearchParams(params);
-  const parts: string[] = [];
-  searchParams.forEach((value, key) => {
-    const [field, op] = key.split('_');
-    if (!field || !op) return;
-    const label = opLabels[op] ?? op;
-    parts.push(`${field} ${label} ${value}`);
-  });
-  if (!parts.length && !params.includes('=')) {
-    return params;
-  }
-  return parts.join('\n');
-}
-
 // Message role configuration: define layout and rendering for assistant and user messages
 const role: BubbleListProps['role'] = {
   assistant: {
     placement: 'start',
     contentRender(content: string | React.ReactNode) {
-      if (typeof content !== 'string') return content;
-      return filtersToText(content);
+      return content;
     },
   },
   user: {
@@ -94,6 +70,7 @@ export function Chat({
   const locale = useLocale();
   const [messages, setMessages] = React.useState<ChatMessage[]>([]);
   const [isRequesting, setIsRequesting] = React.useState(false);
+  const [isVoiceProcessing, setIsVoiceProcessing] = React.useState(false);
   const abortControllerRef = React.useRef<AbortController | null>(null);
 
   const isDefaultMessagesRequesting = false;
@@ -130,6 +107,7 @@ export function Chat({
 
   const onlineSpeech = useSpeechRecognitionOnline({
     onResult: (transcript) => {
+      setIsVoiceProcessing(false);
       void sendQuery(transcript, 'voice');
     },
     offlineMessage: locale.voiceOffline,
@@ -137,6 +115,7 @@ export function Chat({
 
   const localSpeech = useSpeechRecognitionLocal({
     onResult: (transcript) => {
+      setIsVoiceProcessing(false);
       void sendQuery(transcript, 'voice');
     },
   });
@@ -153,16 +132,23 @@ export function Chat({
 
   const handleRecordingChange = (recording: boolean) => {
     if (recording) {
+      setIsVoiceProcessing(false);
       startRecording();
     } else {
+      if (isRecording) {
+        setIsVoiceProcessing(true);
+      }
       stopRecording();
     }
   };
 
-  async function sendQuery(
-    query: string,
-    source: 'text' | 'voice' = 'text',
-  ) {
+  React.useEffect(() => {
+    if (voiceError) {
+      setIsVoiceProcessing(false);
+    }
+  }, [voiceError]);
+
+  async function sendQuery(query: string, source: 'text' | 'voice' = 'text') {
     const trimmed = query.trim();
     if (!trimmed || isRequesting) return;
     if (!isOnline()) {
@@ -202,7 +188,7 @@ export function Chat({
             })
           : await textToQueryLocal(trimmed);
       const result = buildQueryString(raw);
-      console.log(raw, result)
+      setParams(result);
       setMessages((prev) =>
         prev.map((message) =>
           message.id === assistantMessage.id
@@ -211,13 +197,12 @@ export function Chat({
                 status: 'success',
                 message: {
                   role: 'assistant',
-                  content: result || locale.requestFailed,
+                  content: locale.requestSucceeded,
                 },
               }
             : message,
         ),
       );
-      setParams(result);
     } catch (error) {
       const isAbort =
         error instanceof DOMException && error.name === 'AbortError';
@@ -258,12 +243,6 @@ export function Chat({
               ? locale.noMessages
               : locale.qaCompleted}
         </div>
-        <Flex align="center" gap="middle">
-          {/* Abort button: only available when request is in progress */}
-          <Button disabled={!isRequesting} onClick={abort}>
-            {locale.abort}
-          </Button>
-        </Flex>
       </Flex>
       {/* Message list: display all chat messages, including default messages  */}
       <Bubble.List
@@ -312,6 +291,10 @@ export function Chat({
           ) : voiceError ? (
             <Typography.Text type="danger">
               <WarningOutlined /> {voiceError}
+            </Typography.Text>
+          ) : isVoiceProcessing ? (
+            <Typography.Text type="secondary">
+              {locale.voiceProcessing}
             </Typography.Text>
           ) : spokenText ? (
             <Typography.Text type="secondary">{spokenText}</Typography.Text>
