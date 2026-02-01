@@ -1,12 +1,10 @@
+import OpenAI from 'openai';
+
 import type { QueryFilter, QueryParams } from '../buildQueryString';
 
-const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
-const OPENROUTER_MODEL = import.meta.env.VITE_OPENROUTER_MODEL as
-  | string
-  | undefined;
-const OPENROUTER_API_KEY = import.meta.env.VITE_OPENROUTER_API_KEY as
-  | string
-  | undefined;
+const baseURL = import.meta.env.VITE_PROVIDER_URL as string | undefined;
+const model = import.meta.env.VITE_MODEL as string | undefined;
+const apiKey = import.meta.env.VITE_API_KEY as string | undefined;
 
 const prompt = import.meta.env.VITE_SYSTEM_PROMPT ?? '';
 const SYSTEM_PROMPT = prompt.trim() || '';
@@ -46,40 +44,43 @@ export async function textToQueryOnline(
   text: string,
   options: { signal?: AbortSignal } = {},
 ): Promise<QueryFilter[]> {
-  if (!OPENROUTER_API_KEY) {
-    throw new Error('VITE_OPENROUTER_API_KEY is not set');
+
+  if (!baseURL || !apiKey || !model) {
+    throw new Error('Required environment variables are not set');
   }
 
-  const response = await fetch(OPENROUTER_API_URL, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${OPENROUTER_API_KEY}`,
-      'Content-Type': 'application/json',
-      'HTTP-Referer': window.location.origin,
-      'X-Title': 'Local Models Demo',
-    },
-    signal: options.signal,
-    body: JSON.stringify({
-      model: OPENROUTER_MODEL,
+  const defaultHeaders: Record<string, string> = {
+    'X-Title': 'Local Models Demo',
+  };
+  if (typeof window !== 'undefined') {
+    defaultHeaders['HTTP-Referer'] = window.location.origin;
+  }
+
+  const client = new OpenAI({
+    baseURL,
+    apiKey,
+    defaultHeaders,
+    dangerouslyAllowBrowser: true,
+  });
+
+  const completion = await client.chat.completions.create(
+    {
+      model,
       messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user', content: text },
+        {
+          role: 'user',
+          content: `${SYSTEM_PROMPT}. Запрос: ${text}`,
+        },
       ],
       temperature: 0.1,
       stream: false,
-    }),
-  });
+    },
+    {
+      signal: options.signal,
+    },
+  );
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`OpenRouter request failed: ${errorText}`);
-  }
-
-  const payload = (await response.json()) as {
-    choices?: Array<{ message?: { content?: string } }>;
-  };
-
-  const content = payload.choices?.[0]?.message?.content ?? '';
+  const content = completion.choices?.[0]?.message?.content ?? '';
   const jsonText = extractJsonObject(content);
   if (!jsonText) {
     return [];
@@ -90,7 +91,7 @@ export async function textToQueryOnline(
       return parsed.filters;
     }
   } catch {
-    // fall through
+    throw new Error('Failed to parse response as JSON');
   }
 
   return [];
