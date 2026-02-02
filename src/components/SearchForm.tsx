@@ -4,13 +4,14 @@ import {
   Space,
   Typography,
 } from 'antd';
-import { Chat } from './Chat';
+import { Chat } from '@/components/Chat';
+import type { Mode } from '@/pages/Page';
 
 export function SearchForm({
   mode,
   setParams,
 }: {
-  mode: 'local' | 'online';
+  mode: Mode;
   setParams: (params: string) => void;
 }) {
   return (

@@ -1,6 +1,6 @@
 import OpenAI from 'openai';
 
-import type { QueryFilter, QueryParams } from '../buildQueryString';
+import { isQueryParams, type QueryFilter, type QueryParams } from '@/utils/query';
 
 const baseURL = import.meta.env.VITE_PROVIDER_URL as string | undefined;
 const model = import.meta.env.VITE_MODEL as string | undefined;
@@ -8,21 +8,6 @@ const apiKey = import.meta.env.VITE_API_KEY as string | undefined;
 
 const prompt = import.meta.env.VITE_SYSTEM_PROMPT ?? '';
 const SYSTEM_PROMPT = prompt.trim() || '';
-
-const isQueryParams = (value: unknown): value is QueryParams => {
-  if (!value || typeof value !== 'object') return false;
-  const record = value as Record<string, unknown>;
-  if (!Array.isArray(record.filters)) return false;
-  return record.filters.every((filter) => {
-    if (!filter || typeof filter !== 'object') return false;
-    const filterRecord = filter as Record<string, unknown>;
-    return (
-      typeof filterRecord.field === 'string' &&
-      typeof filterRecord.op === 'string' &&
-      'value' in filterRecord
-    );
-  });
-};
 
 const extractJsonObject = (input: string): string | null => {
   const trimmed = input.trim();
@@ -44,7 +29,6 @@ export async function textToQueryOnline(
   text: string,
   options: { signal?: AbortSignal } = {},
 ): Promise<QueryFilter[]> {
-
   if (!baseURL || !apiKey || !model) {
     throw new Error('Required environment variables are not set');
   }

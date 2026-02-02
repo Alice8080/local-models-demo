@@ -2,7 +2,9 @@ import { Flex } from 'antd';
 
 import { ObjectsTable } from '@/components/ObjectsTable';
 
-export function Page({ mode }: { mode: 'local' | 'online' }) {
+export type Mode = 'local' | 'online';
+
+export function Page({ mode }: { mode: Mode }) {
   return (
     <Flex gap="large" vertical>
       <h1>

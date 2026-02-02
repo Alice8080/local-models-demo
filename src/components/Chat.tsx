@@ -9,12 +9,13 @@ import {
   preloadLocalLlmModels,
   textToQueryLocal,
 } from '@/utils/local/llm/textToQueryLocal';
-import { buildQueryString } from '@/utils/buildQueryString';
+import { buildQueryString } from '@/utils/query';
 import { useSpeechRecognitionOnline } from '@/utils/online/useSpeechRecognitionOnline';
 import {
   preloadSpeechRecognitionLocal,
   useSpeechRecognitionLocal,
 } from '@/utils/local/asr/useSpeechRecognitionLocal';
+import type { Mode } from '@/pages/Page';
 
 const useLocale = () => {
   return {
@@ -87,7 +88,7 @@ export function Chat({
   mode,
   setParams,
 }: {
-  mode: 'local' | 'online';
+  mode: Mode;
   setParams: (params: string) => void;
 }) {
   const [content, setContent] = React.useState('');
@@ -104,8 +105,6 @@ export function Chat({
     React.useState<string | null>(null);
   const abortControllerRef = React.useRef<AbortController | null>(null);
 
-  const isDefaultMessagesRequesting = false;
-
   const abort = () => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
@@ -114,8 +113,6 @@ export function Chat({
 
   const isOnline = () =>
     typeof navigator === 'undefined' ? true : navigator.onLine;
-
-  const chatMessages = messages;
 
   const appendErrorMessage = (
     userText: string,
@@ -362,7 +359,7 @@ export function Chat({
       <Bubble.List
         role={role}
         style={{ height: 'fit-content', width: '100%' }}
-        items={chatMessages.map(({ id, message, status, severity }) => {
+        items={messages.map(({ id, message, status, severity }) => {
           const isError = status === 'error';
           const content = isError ? (
             <Typography.Text type="danger">
@@ -389,7 +386,7 @@ export function Chat({
       {/* Sender: user input area, supports sending messages and aborting requests */}
       <Sender
         loading={isRequesting}
-        disabled={isDefaultMessagesRequesting}
+        disabled={isLocalModelLoading}
         value={content}
         onCancel={() => {
           // Cancel current request
@@ -418,10 +415,14 @@ export function Chat({
           setContent('');
           void sendQuery(nextContent, 'text');
         }}
-        allowSpeech={{
-          recording: isRecording,
-          onRecordingChange: handleRecordingChange,
-        }}
+        allowSpeech={
+          isLocalModelLoading
+            ? false
+            : {
+                recording: isRecording,
+                onRecordingChange: handleRecordingChange,
+              }
+        }
       />
     </Flex>
   );

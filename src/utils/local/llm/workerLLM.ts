@@ -1,9 +1,13 @@
-import { preloadWasmTextToQueryModel, runWasmTextToQuery } from './wasm';
+import {
+  preloadWasmTextToQueryModel,
+  runWasmTextToQuery,
+} from '@/utils/local/llm/wasm';
 import {
   hasWebGPU,
   preloadWebGpuModel,
   runWebGpuTextToQuery,
-} from './webGPU';
+} from '@/utils/local/llm/webGPU';
+import { toSafeText } from '@/utils/toSafeText';
 
 type WorkerRequest =
   | {
@@ -38,18 +42,6 @@ if (!wasmContextPrompt) {
 
 const requiredWasmContextPrompt = wasmContextPrompt;
 
-function toSafeText(value: unknown) {
-  if (typeof value === 'string') return value;
-  if (value === null || value === undefined) return '';
-  if (typeof value === 'number' || typeof value === 'boolean')
-    return String(value);
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return String(value);
-  }
-}
-
 async function handleRequest(
   text: string,
   onPartial?: (value: string) => void,
@@ -66,7 +58,10 @@ async function handleRequest(
   });
 }
 
-async function handlePreload(backend: 'webgpu' | 'wasm', onProgress?: (info: { file: string }) => void) {
+async function handlePreload(
+  backend: 'webgpu' | 'wasm',
+  onProgress?: (info: { file: string }) => void,
+) {
   if (backend === 'webgpu') {
     if (!hasWebGPU) return;
     await preloadWebGpuModel((file) => {

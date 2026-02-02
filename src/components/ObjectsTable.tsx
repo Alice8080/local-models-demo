@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, Spin, Table } from 'antd';
+import { Alert, Table } from 'antd';
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
 
-import { SearchForm } from './SearchForm';
+import { SearchForm } from '@/components/SearchForm';
+import type { Mode } from '@/pages/Page';
 
 type SpaceObject = {
   id: string;
@@ -17,12 +18,10 @@ type SpaceObjectsResponse = {
 type FieldsResponse = Record<string, string>;
 
 const DEFAULT_PAGE_SIZE = 10;
-const API_BASE_URL =
-  (import.meta.env.VITE_API_URL as string | undefined) ??
-  'http://localhost:3000';
+const API_BASE_URL = (import.meta.env.VITE_API_URL as string | undefined) ?? '';
 
 interface Props {
-  mode: 'local' | 'online';
+  mode: Mode;
 }
 
 export function ObjectsTable({ mode }: Props) {
@@ -35,7 +34,6 @@ export function ObjectsTable({ mode }: Props) {
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [params, setParams] = useState('');
-  const [isQueryLoading, setIsQueryLoading] = useState(false);
 
   useEffect(() => {
     let isActive = true;
@@ -82,12 +80,10 @@ export function ObjectsTable({ mode }: Props) {
         const url = new URL(`${API_BASE_URL}/space-objects`);
         url.searchParams.set('_page', String(page));
         url.searchParams.set('_per_page', String(pageSize));
-        if (true) {
-          const extraParams = new URLSearchParams(params);
-          extraParams.forEach((value, key) => {
-            url.searchParams.set(key, value);
-          });
-        }
+        const extraParams = new URLSearchParams(params);
+        extraParams.forEach((value, key) => {
+          url.searchParams.set(key, value);
+        });
 
         const response = await fetch(url);
         if (!response.ok) {
@@ -97,10 +93,7 @@ export function ObjectsTable({ mode }: Props) {
         if (isActive) {
           const normalized = result.data.map((item) => ({
             ...item,
-            orbitalPeriod:
-              item.orbitalPeriod ??
-              (item as { orbitalPeriod?: number }).orbitalPeriod ??
-              null,
+            orbitalPeriod: item.orbitalPeriod ?? null,
           }));
           setData(normalized);
           setTotalItems(result.items ?? 0);
@@ -145,7 +138,6 @@ export function ObjectsTable({ mode }: Props) {
   return (
     <>
       <SearchForm mode={mode} setParams={setParams} />
-      {isQueryLoading && <Spin />}
       {error && <Alert type="error" message={error} showIcon />}
       <Table
         rowKey="id"

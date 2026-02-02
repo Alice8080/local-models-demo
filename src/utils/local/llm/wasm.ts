@@ -1,6 +1,7 @@
 import { ModelManager, Wllama, type Model } from '@wllama/wllama';
 import wllamaSingle from '@wllama/wllama/src/single-thread/wllama.wasm?url';
 import wllamaMulti from '@wllama/wllama/src/multi-thread/wllama.wasm?url';
+import { toSafeText } from '@/utils/toSafeText';
 
 type RunWasmOptions = {
   onPartial?: (value: string) => void;
@@ -51,17 +52,6 @@ const buildChatPrompt = (systemPrompt: string, userText: string) =>
     `<|im_start|>user\n${userText}<|im_end|>\n`,
     '<|im_start|>assistant\n',
   ].join('');
-
-const toSafeText = (value: unknown) => {
-  if (typeof value === 'string') return value;
-  if (value === null || value === undefined) return '';
-  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return String(value);
-  }
-};
 
 const extractJsonObject = (value: string) => {
   const start = value.indexOf('{');

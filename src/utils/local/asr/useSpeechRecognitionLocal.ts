@@ -249,10 +249,8 @@ export function useSpeechRecognitionLocal({
 
         try {
           const pcm = await decodeToPCM16k(blob);
-          let usedBackend: Backend = backend;
           let transcript = await transcribeWithWorker(pcm, backend, modelId, language);
           if (!transcript && backend === 'webgpu') {
-            usedBackend = 'wasm';
             transcript = await transcribeWithWorker(pcm, 'wasm', modelId, language);
           }
           setSpokenText(transcript);

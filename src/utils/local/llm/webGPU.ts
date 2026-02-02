@@ -1,5 +1,6 @@
 import { CreateMLCEngine } from '@mlc-ai/web-llm';
 import type { ChatCompletionMessageParam } from '@mlc-ai/web-llm';
+import { toSafeText } from '@/utils/toSafeText';
 
 const MODEL_URL = import.meta.env.VITE_MODEL_URL as string | undefined;
 const MODEL_LIB_URL = import.meta.env.VITE_MODEL_LIB_URL as string | undefined;
@@ -13,20 +14,7 @@ const contextPrompt = import.meta.env.VITE_SYSTEM_PROMPT_LOCAL as
 if (!contextPrompt) {
   throw new Error('VITE_SYSTEM_PROMPT_LOCAL is not set');
 }
-
-const requiredContextPrompt = contextPrompt;
-
-function toSafeText(value: unknown) {
-  if (typeof value === 'string') return value;
-  if (value === null || value === undefined) return '';
-  if (typeof value === 'number' || typeof value === 'boolean')
-    return String(value);
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return String(value);
-  }
-}
+const requiredContextPrompt = contextPrompt as string;
 
 async function getEngine(onProgress?: (text: string) => void) {
   if (enginePromise) return enginePromise;
