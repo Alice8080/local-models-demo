@@ -1,16 +1,30 @@
 import { CreateMLCEngine } from '@mlc-ai/web-llm';
 import type { ChatCompletionMessageParam } from '@mlc-ai/web-llm';
-import { runWasmTextToQuery } from './wasm';
+import { preloadWasmTextToQueryModel, runWasmTextToQuery } from './wasm';
 
-type WorkerRequest = {
-  id: number;
-  text: string;
-};
+type WorkerRequest =
+  | {
+      id: number;
+      type: 'run';
+      text: string;
+    }
+  | {
+      id: number;
+      type: 'preload';
+      backend: 'webgpu' | 'wasm';
+    };
 
 type WorkerResponse =
   | { id: number; result: string }
   | { id: number; error: string }
-  | { id: number; partial: string };
+  | { id: number; partial: string }
+  | {
+      id: number;
+      progress: {
+        source: 'llm-wasm' | 'llm-webgpu';
+        file: string;
+      };
+    };
 
 const MODEL_URL = import.meta.env.VITE_MODEL_URL as string | undefined;
 const MODEL_LIB_URL = import.meta.env.VITE_MODEL_LIB_URL as string | undefined;
@@ -18,7 +32,7 @@ const hasWebGPU = typeof navigator !== 'undefined' && 'gpu' in navigator;
 
 let enginePromise: ReturnType<typeof CreateMLCEngine> | null = null;
 
-async function getEngine() {
+async function getEngine(onProgress?: (text: string) => void) {
   if (enginePromise) return enginePromise;
   if (!MODEL_URL || !MODEL_LIB_URL) {
     throw new Error('VITE_MODEL_URL or VITE_MODEL_LIB_URL is not set');
@@ -39,7 +53,14 @@ async function getEngine() {
     ],
   };
 
-  enginePromise = CreateMLCEngine(modelId, { appConfig });
+  enginePromise = CreateMLCEngine(modelId, {
+    appConfig,
+    initProgressCallback: onProgress
+      ? (report) => {
+          onProgress(report.text);
+        }
+      : undefined,
+  });
   return enginePromise;
 }
 
@@ -98,20 +119,47 @@ async function handleRequest(
   });
 }
 
+async function handlePreload(backend: 'webgpu' | 'wasm', onProgress?: (info: { file: string }) => void) {
+  if (backend === 'webgpu') {
+    if (!hasWebGPU) return;
+    await getEngine((text) => {
+      if (!text) return;
+      onProgress?.({ file: text });
+    });
+    return;
+  }
+
+  await preloadWasmTextToQueryModel(onProgress);
+}
+
 self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
-  const { id, text } = event.data;
+  const { id, type } = event.data;
   let response: WorkerResponse;
 
   try {
-    const result = await handleRequest(text, (partial) => {
-      self.postMessage({ id, partial });
-    });
-    response = { id, result };
+    if (type === 'preload') {
+      const backend = event.data.backend;
+      await handlePreload(backend, (progress) => {
+        self.postMessage({
+          id,
+          progress: {
+            source: backend === 'webgpu' ? 'llm-webgpu' : 'llm-wasm',
+            file: progress.file,
+          },
+        });
+      });
+      response = { id, result: '' };
+    } else {
+      const result = await handleRequest(event.data.text, (partial) => {
+        self.postMessage({ id, partial });
+      });
+      response = { id, result };
+    }
   } catch (error) {
-    if (hasWebGPU) {
+    if (type !== 'preload' && hasWebGPU) {
       try {
         const result = await runWasmTextToQuery(
-          toSafeText(text),
+          toSafeText(event.data.text),
           requiredWasmContextPrompt,
           {
             onPartial: (partial) => {

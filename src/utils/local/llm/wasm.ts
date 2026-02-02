@@ -1,1 +1,1 @@
-export { runWasmTextToQuery } from './wasmTextToQuery';
+export { runWasmTextToQuery, preloadWasmTextToQueryModel } from './wasmTextToQuery';

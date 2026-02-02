@@ -167,7 +167,6 @@ const AppShell: React.FC<{
         open={isMobile && isMobileMenuOpen}
         onClose={() => setIsMobileMenuOpen(false)}
         placement="left"
-        width={260}
         classNames={{ body: 'p-0', header: 'p-4' }}
         title={
           <Space align="center" size={12}>

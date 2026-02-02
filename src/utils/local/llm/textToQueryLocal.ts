@@ -9,21 +9,40 @@ export async function textToQueryLocal(text: string): Promise<QueryFilter[]> {
       pendingRequests.delete(id);
       reject(new Error("Local LLM timed out"));
     }, 120000);
-    pendingRequests.set(id, { resolve, reject, timeoutId });
-    worker.postMessage({ id, text });
+    pendingRequests.set(id, { kind: "query", resolve, reject, timeoutId });
+    worker.postMessage({ id, type: "run", text });
   });
 }
 
-type PendingRequest = {
-  resolve: (value: QueryFilter[]) => void;
-  reject: (reason?: unknown) => void;
-  timeoutId: number;
-};
+type PendingRequest =
+  | {
+      kind: "query";
+      resolve: (value: QueryFilter[]) => void;
+      reject: (reason?: unknown) => void;
+      timeoutId: number;
+    }
+  | {
+      kind: "preload";
+      resolve: () => void;
+      reject: (reason?: unknown) => void;
+      timeoutId: number;
+      onProgress?: (progress: {
+        source: "llm-wasm" | "llm-webgpu";
+        file: string;
+      }) => void;
+    };
 
 type WorkerResponse =
   | { id: number; result: string }
   | { id: number; error: string }
-  | { id: number; partial: string };
+  | { id: number; partial: string }
+  | {
+      id: number;
+      progress: {
+        source: "llm-wasm" | "llm-webgpu";
+        file: string;
+      };
+    };
 
 let workerInstance: Worker | null = null;
 let nextRequestId = 1;
@@ -72,8 +91,13 @@ function getWorker(): Worker {
     const { id } = event.data;
     const pending = pendingRequests.get(id);
     if (!pending) return;
+    if ("progress" in event.data) {
+      if (pending.kind === "preload") {
+        pending.onProgress?.(event.data.progress);
+      }
+      return;
+    }
     if ("partial" in event.data) {
-      console.log(event.data.partial);
       return;
     }
 
@@ -83,7 +107,11 @@ function getWorker(): Worker {
     if ("error" in event.data) {
       pending.reject(new Error(event.data.error));
     } else {
-      pending.resolve(parseFilters(event.data.result));
+      if (pending.kind === "preload") {
+        pending.resolve();
+      } else {
+        pending.resolve(parseFilters(event.data.result));
+      }
     }
   };
 
@@ -94,4 +122,48 @@ function getWorker(): Worker {
   };
 
   return workerInstance;
+}
+
+async function preloadLocalLlm(
+  backend: "webgpu" | "wasm",
+  onProgress?: (progress: {
+    source: "llm-wasm" | "llm-webgpu";
+    file: string;
+  }) => void
+) {
+  const worker = getWorker();
+  const id = nextRequestId++;
+
+  return new Promise<void>((resolve, reject) => {
+    const timeoutId = window.setTimeout(() => {
+      pendingRequests.delete(id);
+      reject(new Error("Local LLM preload timed out"));
+    }, 120000);
+    pendingRequests.set(id, {
+      kind: "preload",
+      resolve,
+      reject,
+      timeoutId,
+      onProgress,
+    });
+    worker.postMessage({ id, type: "preload", backend });
+  });
+}
+
+export async function preloadLocalLlmModels(options?: {
+  onProgress?: (progress: {
+    source: "llm-wasm" | "llm-webgpu";
+    file: string;
+  }) => void;
+}) {
+  const hasWebGPU = typeof navigator !== "undefined" && "gpu" in navigator;
+  if (hasWebGPU) {
+    try {
+      await preloadLocalLlm("webgpu", options?.onProgress);
+    } catch (error) {
+      console.warn("WebGPU preload failed, fallback to WASM:", error);
+    }
+  } else {
+    await preloadLocalLlm("wasm", options?.onProgress);
+  }
 }

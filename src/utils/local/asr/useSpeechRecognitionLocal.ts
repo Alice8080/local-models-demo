@@ -8,23 +8,53 @@ type UseSpeechRecognitionLocalOptions = {
   modelId?: string;
 };
 
-type WorkerRequest = {
-  id: number;
-  type: 'transcribe';
-  audio: Float32Array;
-  backend: Backend;
-  modelId: string;
-  language?: string;
-};
+type WorkerRequest =
+  | {
+      id: number;
+      type: 'transcribe';
+      audio: Float32Array;
+      backend: Backend;
+      modelId: string;
+      language?: string;
+    }
+  | {
+      id: number;
+      type: 'preload';
+      backend: Backend;
+      modelId: string;
+      language?: string;
+    };
 
 type WorkerResponse =
   | { id: number; result: string }
-  | { id: number; error: string };
+  | { id: number; error: string }
+  | {
+      id: number;
+      progress: {
+        status: string;
+        file: string;
+        modelId: string;
+        backend: Backend;
+      };
+    };
 
-type PendingRequest = {
-  resolve: (value: string) => void;
-  reject: (reason?: unknown) => void;
-};
+type PendingRequest =
+  | {
+      kind: 'transcribe';
+      resolve: (value: string) => void;
+      reject: (reason?: unknown) => void;
+    }
+  | {
+      kind: 'preload';
+      resolve: () => void;
+      reject: (reason?: unknown) => void;
+      onProgress?: (progress: {
+        status: string;
+        file: string;
+        modelId: string;
+        backend: Backend;
+      }) => void;
+    };
 
 const DEFAULT_MODEL_ID = 'Xenova/whisper-base';
 const hasWebGPU = typeof navigator !== 'undefined' && 'gpu' in navigator;
@@ -44,12 +74,22 @@ function getWorker(): Worker {
     const { id } = event.data;
     const pending = pendingRequests.get(id);
     if (!pending) return;
+    if ('progress' in event.data) {
+      if (pending.kind === 'preload') {
+        pending.onProgress?.(event.data.progress);
+      }
+      return;
+    }
     pendingRequests.delete(id);
 
     if ('error' in event.data) {
       pending.reject(new Error(event.data.error));
     } else {
-      pending.resolve(event.data.result);
+      if (pending.kind === 'preload') {
+        pending.resolve();
+      } else {
+        pending.resolve(event.data.result);
+      }
     }
   };
 
@@ -72,9 +112,43 @@ async function transcribeWithWorker(
   const id = nextRequestId++;
 
   return new Promise<string>((resolve, reject) => {
-    pendingRequests.set(id, { resolve, reject });
+    pendingRequests.set(id, { kind: 'transcribe', resolve, reject });
     const request: WorkerRequest = { id, type: 'transcribe', audio, backend, modelId, language };
     worker.postMessage(request, [audio.buffer]);
+  });
+}
+
+export async function preloadSpeechRecognitionLocal(options?: {
+  backend?: Backend;
+  modelId?: string;
+  language?: string;
+  onProgress?: (progress: {
+    status: string;
+    file: string;
+    modelId: string;
+    backend: Backend;
+  }) => void;
+}) {
+  const selectedBackend = options?.backend ?? (hasWebGPU ? 'webgpu' : 'wasm');
+  const selectedModelId = options?.modelId ?? DEFAULT_MODEL_ID;
+  const worker = getWorker();
+  const id = nextRequestId++;
+
+  return new Promise<void>((resolve, reject) => {
+    pendingRequests.set(id, {
+      kind: 'preload',
+      resolve,
+      reject,
+      onProgress: options?.onProgress,
+    });
+    const request: WorkerRequest = {
+      id,
+      type: 'preload',
+      backend: selectedBackend,
+      modelId: selectedModelId,
+      language: options?.language,
+    };
+    worker.postMessage(request);
   });
 }
 
@@ -181,7 +255,6 @@ export function useSpeechRecognitionLocal({
             usedBackend = 'wasm';
             transcript = await transcribeWithWorker(pcm, 'wasm', modelId, language);
           }
-          console.log('ASR backend:', usedBackend, 'text:', transcript);
           setSpokenText(transcript);
           setVoiceError(null);
           onResult(transcript);

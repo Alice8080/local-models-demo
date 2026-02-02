@@ -2,13 +2,19 @@ import React from 'react';
 import { ExclamationCircleOutlined, WarningOutlined } from '@ant-design/icons';
 import type { BubbleListProps } from '@ant-design/x';
 import { Bubble, Sender } from '@ant-design/x';
-import { Button, Flex, Typography } from 'antd';
+import { Flex, Modal, Typography } from 'antd';
 
 import { textToQueryOnline } from '@/utils/online/textToQueryOnline';
-import { textToQueryLocal } from '@/utils/local/llm/textToQueryLocal';
+import {
+  preloadLocalLlmModels,
+  textToQueryLocal,
+} from '@/utils/local/llm/textToQueryLocal';
 import { buildQueryString } from '@/utils/buildQueryString';
 import { useSpeechRecognitionOnline } from '@/utils/online/useSpeechRecognitionOnline';
-import { useSpeechRecognitionLocal } from '@/utils/local/asr/useSpeechRecognitionLocal';
+import {
+  preloadSpeechRecognitionLocal,
+  useSpeechRecognitionLocal,
+} from '@/utils/local/asr/useSpeechRecognitionLocal';
 
 const useLocale = () => {
   return {
@@ -59,6 +65,24 @@ const role: BubbleListProps['role'] = {
   },
 };
 
+const LOCAL_MODEL_PROMPT_KEY = 'localModelsAccepted';
+
+const readLocalModelConsent = () => {
+  try {
+    return localStorage.getItem(LOCAL_MODEL_PROMPT_KEY) === 'true';
+  } catch {
+    return false;
+  }
+};
+
+const writeLocalModelConsent = () => {
+  try {
+    localStorage.setItem(LOCAL_MODEL_PROMPT_KEY, 'true');
+  } catch {
+    // ignore storage errors
+  }
+};
+
 export function Chat({
   mode,
   setParams,
@@ -71,6 +95,13 @@ export function Chat({
   const [messages, setMessages] = React.useState<ChatMessage[]>([]);
   const [isRequesting, setIsRequesting] = React.useState(false);
   const [isVoiceProcessing, setIsVoiceProcessing] = React.useState(false);
+  const [isLocalModelModalOpen, setIsLocalModelModalOpen] =
+    React.useState(false);
+  const [isLocalModelLoading, setIsLocalModelLoading] = React.useState(false);
+  const [localModelLoadError, setLocalModelLoadError] =
+    React.useState<string | null>(null);
+  const [localModelDownloadFile, setLocalModelDownloadFile] =
+    React.useState<string | null>(null);
   const abortControllerRef = React.useRef<AbortController | null>(null);
 
   const isDefaultMessagesRequesting = false;
@@ -147,6 +178,64 @@ export function Chat({
       setIsVoiceProcessing(false);
     }
   }, [voiceError]);
+
+  const preloadLocalModels = React.useCallback(
+    async (showErrors: boolean) => {
+      setIsLocalModelLoading(true);
+      setLocalModelLoadError(null);
+      setLocalModelDownloadFile(null);
+      try {
+        await Promise.all([
+          preloadSpeechRecognitionLocal({
+            onProgress: (progress) => {
+              setLocalModelDownloadFile(`ASR: ${progress.file}`);
+            },
+          }),
+          preloadLocalLlmModels({
+            onProgress: (progress) => {
+              const label =
+                progress.source === 'llm-webgpu'
+                  ? `LLM WebGPU: ${progress.file}`
+                  : `LLM WASM: ${progress.file}`;
+              setLocalModelDownloadFile(label);
+            },
+          }),
+        ]);
+      } catch (error) {
+        if (showErrors) {
+          setLocalModelLoadError(
+            error instanceof Error ? error.message : String(error),
+          );
+        } else {
+          console.warn('Local model preload failed:', error);
+        }
+      } finally {
+        setIsLocalModelLoading(false);
+        setLocalModelDownloadFile(null);
+      }
+    },
+    [],
+  );
+
+  React.useEffect(() => {
+    if (mode === 'local') {
+      const hasConsent = readLocalModelConsent();
+      setIsLocalModelModalOpen(!hasConsent);
+      if (hasConsent) {
+        void preloadLocalModels(false);
+      }
+    } else {
+      setIsLocalModelModalOpen(false);
+      setIsLocalModelLoading(false);
+      setLocalModelLoadError(null);
+    }
+  }, [mode, preloadLocalModels]);
+
+  const handleLocalModelOk = async () => {
+    setIsLocalModelModalOpen(false);
+    writeLocalModelConsent();
+    void preloadLocalModels(true);
+  };
 
   async function sendQuery(query: string, source: 'text' | 'voice' = 'text') {
     const trimmed = query.trim();
@@ -233,6 +322,26 @@ export function Chat({
 
   return (
     <Flex vertical gap="middle">
+      <Modal
+        open={isLocalModelModalOpen && mode === 'local'}
+        title="Требуются локальные модели"
+        okText="Ок"
+        cancelButtonProps={{ style: { display: 'none' } }}
+        closable={false}
+        maskClosable={false}
+        okButtonProps={{ loading: isLocalModelLoading }}
+        onOk={handleLocalModelOk}
+      >
+        <Typography.Paragraph>
+          Для работы приложения нужны локальные модели. Нажмите «Ок», чтобы
+          загрузить их.
+        </Typography.Paragraph>
+        {localModelLoadError ? (
+          <Typography.Text type="danger">
+            Не удалось загрузить модели: {localModelLoadError}
+          </Typography.Text>
+        ) : null}
+      </Modal>
       {/* Status and control area: display current status and provide action buttons */}
       <Flex vertical gap="middle">
         <div>
@@ -243,6 +352,11 @@ export function Chat({
               ? locale.noMessages
               : locale.qaCompleted}
         </div>
+        {isLocalModelLoading && localModelDownloadFile ? (
+          <Typography.Text type="secondary">
+            Загружается файл: {localModelDownloadFile}
+          </Typography.Text>
+        ) : null}
       </Flex>
       {/* Message list: display all chat messages, including default messages  */}
       <Bubble.List

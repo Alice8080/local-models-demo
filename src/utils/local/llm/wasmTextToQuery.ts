@@ -16,6 +16,14 @@ const WLLAMA_CONFIG_PATHS = {
   'multi-thread/wllama.wasm': wllamaMulti,
 };
 
+const getModelFileLabel = () => {
+  try {
+    return new URL(MODEL_URL).pathname.split('/').pop() ?? MODEL_URL;
+  } catch {
+    return MODEL_URL;
+  }
+};
+
 const modelManager = new ModelManager();
 let wllamaInstance: Wllama | null = null;
 let loadPromise: Promise<void> | null = null;
@@ -158,22 +166,27 @@ const finalizeJsonFromCompletion = (raw: string) => {
   return '';
 };
 
-async function getCachedOrDownloadModel(): Promise<Model> {
+async function getCachedOrDownloadModel(onProgress?: (info: { file: string }) => void): Promise<Model> {
   const cached = (await modelManager.getModels()).find(
     (model) => model.url === MODEL_URL,
   );
   if (cached) return cached;
-  return modelManager.downloadModel(MODEL_URL);
+  const fileLabel = getModelFileLabel();
+  return modelManager.downloadModel(MODEL_URL, {
+    progressCallback: () => {
+      onProgress?.({ file: fileLabel });
+    },
+  });
 }
 
-async function ensureModelLoaded() {
+async function ensureModelLoaded(onProgress?: (info: { file: string }) => void) {
   if (loadPromise) return loadPromise;
   loadPromise = (async () => {
     if (!wllamaInstance) {
       ensureDocumentShim();
       wllamaInstance = new Wllama(WLLAMA_CONFIG_PATHS);
     }
-    const model = await getCachedOrDownloadModel();
+    const model = await getCachedOrDownloadModel(onProgress);
     await wllamaInstance.loadModel(model, {
       n_threads: getCpuThreads(),
       n_ctx: 2048,
@@ -187,6 +200,10 @@ async function ensureModelLoaded() {
     loadPromise = null;
     throw error;
   }
+}
+
+export async function preloadWasmTextToQueryModel(onProgress?: (info: { file: string }) => void) {
+  await ensureModelLoaded(onProgress);
 }
 
 export async function runWasmTextToQuery(
