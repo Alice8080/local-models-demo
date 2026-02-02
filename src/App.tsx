@@ -40,14 +40,14 @@ const AppShell: React.FC<{
   const menuItems = useMemo(
     () => [
       {
-        key: '/',
+        key: '/local-models-demo/',
         icon: <StarOutlined />,
-        label: <Link to="/">Локальное демо</Link>,
+        label: <Link to="/local-models-demo/">Локальное демо</Link>,
       },
       {
-        key: '/online-demo',
+        key: '/local-models-demo/online-demo',
         icon: <TableOutlined />,
-        label: <Link to="/online-demo">Онлайн демо</Link>,
+        label: <Link to="/local-models-demo/online-demo">Онлайн демо</Link>,
       },
     ],
     [],
@@ -157,8 +157,8 @@ const AppShell: React.FC<{
           }}
         >
           <Routes>
-          <Route path="/" element={<Page mode="local" />} />
-          <Route path="/online-demo" element={<Page mode="online" />} />
+          <Route path="/local-models-demo/" element={<Page mode="local" />} />
+          <Route path="/local-models-demo/online-demo" element={<Page mode="online" />} />
           </Routes> 
         </Content>
       </Layout>
