@@ -1,6 +1,9 @@
-import { CreateMLCEngine } from '@mlc-ai/web-llm';
-import type { ChatCompletionMessageParam } from '@mlc-ai/web-llm';
 import { preloadWasmTextToQueryModel, runWasmTextToQuery } from './wasm';
+import {
+  hasWebGPU,
+  preloadWebGpuModel,
+  runWebGpuTextToQuery,
+} from './webGPU';
 
 type WorkerRequest =
   | {
@@ -26,52 +29,6 @@ type WorkerResponse =
       };
     };
 
-const MODEL_URL = import.meta.env.VITE_MODEL_URL as string | undefined;
-const MODEL_LIB_URL = import.meta.env.VITE_MODEL_LIB_URL as string | undefined;
-const hasWebGPU = typeof navigator !== 'undefined' && 'gpu' in navigator;
-
-let enginePromise: ReturnType<typeof CreateMLCEngine> | null = null;
-
-async function getEngine(onProgress?: (text: string) => void) {
-  if (enginePromise) return enginePromise;
-  if (!MODEL_URL || !MODEL_LIB_URL) {
-    throw new Error('VITE_MODEL_URL or VITE_MODEL_LIB_URL is not set');
-  }
-
-  const cacheKey = `${MODEL_URL}|${MODEL_LIB_URL}|v2`;
-  const modelId = `custom-qwen25-${btoa(cacheKey)
-    .replace(/=+/g, '')
-    .slice(0, 12)}`;
-
-  const appConfig = {
-    model_list: [
-      {
-        model_id: modelId,
-        model: MODEL_URL ?? '',
-        model_lib: MODEL_LIB_URL ?? '',
-      },
-    ],
-  };
-
-  enginePromise = CreateMLCEngine(modelId, {
-    appConfig,
-    initProgressCallback: onProgress
-      ? (report) => {
-          onProgress(report.text);
-        }
-      : undefined,
-  });
-  return enginePromise;
-}
-
-const contextPrompt = import.meta.env.VITE_SYSTEM_PROMPT_LOCAL as
-  | string
-  | undefined;
-if (!contextPrompt) {
-  throw new Error('VITE_SYSTEM_PROMPT_LOCAL is not set');
-}
-
-const requiredContextPrompt = contextPrompt;
 const wasmContextPrompt = import.meta.env.VITE_SYSTEM_PROMPT_LOCAL_WASM as
   | string
   | undefined;
@@ -100,17 +57,7 @@ async function handleRequest(
   const safeText = toSafeText(text);
 
   if (hasWebGPU) {
-    const engine = await getEngine();
-    const messages: ChatCompletionMessageParam[] = [
-      {
-        role: 'system',
-        content: requiredContextPrompt,
-      },
-      { role: 'user', content: safeText },
-    ];
-
-    const res = await engine.chat.completions.create({ messages });
-    return res.choices?.[0]?.message?.content ?? '';
+    return runWebGpuTextToQuery(safeText);
   }
 
   return runWasmTextToQuery(safeText, requiredWasmContextPrompt, {
@@ -122,9 +69,8 @@ async function handleRequest(
 async function handlePreload(backend: 'webgpu' | 'wasm', onProgress?: (info: { file: string }) => void) {
   if (backend === 'webgpu') {
     if (!hasWebGPU) return;
-    await getEngine((text) => {
-      if (!text) return;
-      onProgress?.({ file: text });
+    await preloadWebGpuModel((file) => {
+      onProgress?.({ file });
     });
     return;
   }

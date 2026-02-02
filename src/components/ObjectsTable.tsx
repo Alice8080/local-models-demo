@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, Spin, Table, Typography } from 'antd';
+import { Alert, Spin, Table } from 'antd';
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
-import { ObjectsInputForm } from './ObjectsInputForm';
+
+import { SearchForm } from './SearchForm';
 
 type SpaceObject = {
   id: string;
@@ -33,39 +34,8 @@ export function ObjectsTable({ mode }: Props) {
   const [isLoadingFields, setIsLoadingFields] = useState(false);
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // const [query, setQuery] = useState('');
   const [params, setParams] = useState('');
   const [isQueryLoading, setIsQueryLoading] = useState(false);
-
-  // useEffect(() => {
-  //   let isActive = true;
-
-  //   const resolveParams = async () => {
-  //     if (!query) {
-  //       setParams('');
-  //       setIsQueryLoading(false);
-  //       return;
-  //     }
-
-  //     setIsQueryLoading(true);
-  //     try {
-  //       const nextParams = await textToQueryParamsOnline(query);
-  //       if (isActive) {
-  //         setParams(nextParams);
-  //       }
-  //     } finally {
-  //       if (isActive) {
-  //         setIsQueryLoading(false);
-  //       }
-  //     }
-  //   };
-
-  //   resolveParams();
-
-  //   return () => {
-  //     isActive = false;
-  //   };
-  // }, [query]);
 
   useEffect(() => {
     let isActive = true;
@@ -174,7 +144,7 @@ export function ObjectsTable({ mode }: Props) {
 
   return (
     <>
-      <ObjectsInputForm mode={mode} setParams={setParams} />
+      <SearchForm mode={mode} setParams={setParams} />
       {isQueryLoading && <Spin />}
       {error && <Alert type="error" message={error} showIcon />}
       <Table

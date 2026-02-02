@@ -22,8 +22,7 @@ import {
 } from 'antd';
 import ru from 'antd/locale/ru_RU';
 
-import { OnlineDemoPage } from './pages/OnlineDemoPage';
-import { LocalDemoPage } from './pages/LocalDemoPage';
+import { Page } from '@/pages/Page';
 
 const { Header, Sider, Content } = Layout;
 const THEME_STORAGE_KEY = 'local-models-theme';
@@ -158,8 +157,8 @@ const AppShell: React.FC<{
           }}
         >
           <Routes>
-          <Route path="/" element={<LocalDemoPage />} />
-          <Route path="/online-demo" element={<OnlineDemoPage />} />
+          <Route path="/" element={<Page mode="local" />} />
+          <Route path="/online-demo" element={<Page mode="online" />} />
           </Routes> 
         </Content>
       </Layout>

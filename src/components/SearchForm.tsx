@@ -6,7 +6,7 @@ import {
 } from 'antd';
 import { Chat } from './Chat';
 
-export function ObjectsInputForm({
+export function SearchForm({
   mode,
   setParams,
 }: {

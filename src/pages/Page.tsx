@@ -1,14 +1,14 @@
 import { Flex } from 'antd';
 
-import { ObjectsTable } from '../components/ObjectsTable';
+import { ObjectsTable } from '@/components/ObjectsTable';
 
-export function OnlineDemoPage() {
+export function Page({ mode }: { mode: 'local' | 'online' }) {
   return (
     <Flex gap="large" vertical>
       <h1>
         Космические объекты
       </h1>
-      <ObjectsTable mode="online" />
+      <ObjectsTable mode={mode} />
     </Flex>
   );
 }
