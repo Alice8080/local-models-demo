@@ -35,6 +35,17 @@ jobs:
 
       - name: Build
         run: npm run build
+        env:
+          VITE_API_URL: ${{ secrets.VITE_API_URL }}
+          VITE_API_KEY: ${{ secrets.VITE_API_KEY }}
+          VITE_PROVIDER_URL: ${{ secrets.VITE_PROVIDER_URL }}
+          VITE_MODEL: ${{ secrets.VITE_MODEL }}
+          VITE_SYSTEM_PROMPT: ${{ secrets.VITE_SYSTEM_PROMPT }}
+          VITE_WLLAMA_MODEL_URL: ${{ secrets.VITE_WLLAMA_MODEL_URL }}
+          VITE_SYSTEM_PROMPT_LOCAL_WASM: ${{ secrets.VITE_SYSTEM_PROMPT_LOCAL_WASM }}
+          VITE_MODEL_URL: ${{ secrets.VITE_MODEL_URL }}
+          VITE_MODEL_LIB_URL: ${{ secrets.VITE_MODEL_LIB_URL }}
+          VITE_SYSTEM_PROMPT_LOCAL: ${{ secrets.VITE_SYSTEM_PROMPT_LOCAL }}
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
