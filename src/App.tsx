@@ -60,7 +60,7 @@ const AppShell: React.FC<{
           collapsible
           trigger={null}
           collapsed={collapsed}
-          width={240}
+          width={220}
           className="border-r"
           style={{
             background: token.colorBgContainer,

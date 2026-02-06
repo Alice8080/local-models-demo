@@ -4,6 +4,20 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      (function (l) {
+        if (l.search.startsWith('?/')) {
+          var decoded = l.search
+            .slice(2)
+            .split('&')
+            .map(function (s) {
+              return s.replace(/~and~/g, '&');
+            })
+            .join('?');
+          window.history.replaceState(null, '', l.pathname + decoded + l.hash);
+        }
+      })(window.location);
+    </script>
     <title>Локальные модели</title>
     <script type="module" crossorigin src="./assets/index-Bazth-PB.js"></script>
     <link rel="stylesheet" crossorigin href="./assets/index-CIoQgz3Z.css">
