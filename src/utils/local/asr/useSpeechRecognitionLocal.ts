@@ -57,7 +57,17 @@ type PendingRequest =
     };
 
 const DEFAULT_MODEL_ID = 'Xenova/whisper-base';
+const DEFAULT_LIGHT_MODEL_ID = 'Xenova/whisper-tiny';
 const hasWebGPU = typeof navigator !== 'undefined' && 'gpu' in navigator;
+
+function isMobileDevice(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+}
+
+function getDefaultModelId(): string {
+  return isMobileDevice() ? DEFAULT_LIGHT_MODEL_ID : DEFAULT_MODEL_ID;
+}
 
 let workerInstance: Worker | null = null;
 let nextRequestId = 1;
@@ -130,7 +140,7 @@ export async function preloadSpeechRecognitionLocal(options?: {
   }) => void;
 }) {
   const selectedBackend = options?.backend ?? (hasWebGPU ? 'webgpu' : 'wasm');
-  const selectedModelId = options?.modelId ?? DEFAULT_MODEL_ID;
+  const selectedModelId = options?.modelId ?? getDefaultModelId();
   const worker = getWorker();
   const id = nextRequestId++;
 
@@ -192,7 +202,7 @@ async function decodeToPCM16k(blob: Blob): Promise<Float32Array> {
 export function useSpeechRecognitionLocal({
   onResult,
   language = 'ru',
-  modelId = DEFAULT_MODEL_ID,
+  modelId = getDefaultModelId(),
 }: UseSpeechRecognitionLocalOptions) {
   const [isRecording, setIsRecording] = React.useState(false);
   const [isVoiceSupported, setIsVoiceSupported] = React.useState(true);
