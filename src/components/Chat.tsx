@@ -237,7 +237,7 @@ export function Chat({
   async function sendQuery(query: string, source: 'text' | 'voice' = 'text') {
     const trimmed = query.trim();
     if (!trimmed || isRequesting) return;
-    if (!isOnline()) {
+    if (!isOnline() && (mode === 'online')) {
       if (source === 'voice') {
         setVoiceError(locale.voiceOffline);
       }
